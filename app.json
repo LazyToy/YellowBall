@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "YellowBall",
+    "slug": "yellowball",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.yellowball.mobile",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ],
+    "extra": {
+      "privacyPolicyUrl": "https://lazytoy.github.io/privacy/",
+      "router": {},
+      "eas": {
+        "projectId": "eab6d14d-4c50-40f6-9c11-e61ad0ff2005"
+      }
+    },
+    "owner": "kimhayoung"
+  }
+}

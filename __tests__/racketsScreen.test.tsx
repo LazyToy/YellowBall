@@ -1,0 +1,109 @@
+import React from 'react';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+
+const mockGetRackets = jest.fn();
+const mockAddRacket = jest.fn();
+const mockUpdateRacket = jest.fn();
+const mockDeleteRacket = jest.fn();
+const mockSetPrimaryRacket = jest.fn();
+const mockUploadRacketPhoto = jest.fn();
+
+const racket = {
+  id: 'racket-1',
+  owner_id: 'user-1',
+  brand: 'Wilson',
+  model: 'Blade',
+  grip_size: 'G2',
+  weight: 305,
+  balance: '320mm',
+  photo_url: 'https://example.com/racket.jpg',
+  is_primary: true,
+  memo: '메인',
+  created_at: '2026-05-03T00:00:00.000Z',
+};
+
+jest.mock('../src/hooks/useAuth', () => ({
+  useAuth: () => ({
+    profile: { id: 'user-1' },
+  }),
+}));
+
+jest.mock('../src/services/racketService', () => ({
+  addRacket: mockAddRacket,
+  deleteRacket: mockDeleteRacket,
+  getRackets: mockGetRackets,
+  setPrimaryRacket: mockSetPrimaryRacket,
+  updateRacket: mockUpdateRacket,
+}));
+
+jest.mock('../src/services/storageService', () => ({
+  uploadRacketPhoto: mockUploadRacketPhoto,
+}));
+
+describe('RacketsScreen', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetRackets.mockResolvedValue([racket]);
+    mockAddRacket.mockResolvedValue(racket);
+    mockUpdateRacket.mockResolvedValue({ ...racket, balance: '325mm' });
+    mockUploadRacketPhoto.mockResolvedValue('https://storage.example.com/racket.jpg');
+    global.fetch = jest.fn().mockResolvedValue({
+      blob: jest.fn().mockResolvedValue(new Blob(['photo'], { type: 'image/jpeg' })),
+    }) as never;
+  });
+
+  test('상세와 수정 플로우에서 무게/밸런스/사진 필드를 다룬다', async () => {
+    const RacketsScreen = require('../app/(tabs)/rackets').default;
+    const screen = render(<RacketsScreen />);
+
+    await waitFor(() => expect(screen.getByText('Wilson Blade')).toBeTruthy());
+
+    fireEvent.press(screen.getByLabelText('Blade 라켓 상세'));
+    expect(screen.getByText('라켓 상세')).toBeTruthy();
+    expect(screen.getByText('사진 https://example.com/racket.jpg')).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText('Blade 라켓 수정'));
+    fireEvent.changeText(screen.getByLabelText('밸런스'), '325mm');
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('라켓 수정 저장'));
+    });
+
+    await waitFor(() =>
+      expect(mockUpdateRacket).toHaveBeenCalledWith(
+        'racket-1',
+        expect.objectContaining({
+          weight: 305,
+          balance: '325mm',
+          photo_url: 'https://example.com/racket.jpg',
+        }),
+      ),
+    );
+  });
+
+  test('사진 파일 URI가 있으면 Storage 업로드 후 반환 URL로 라켓을 저장한다', async () => {
+    mockGetRackets.mockResolvedValue([]);
+    const RacketsScreen = require('../app/(tabs)/rackets').default;
+    const screen = render(<RacketsScreen />);
+
+    fireEvent.changeText(screen.getByLabelText('브랜드'), 'Head');
+    fireEvent.changeText(screen.getByLabelText('모델'), 'Speed');
+    fireEvent.changeText(screen.getByLabelText('무게(g)'), '300');
+    fireEvent.changeText(screen.getByLabelText('사진 파일 URI'), 'file:///tmp/racket.jpg');
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('라켓 추가'));
+    });
+
+    await waitFor(() =>
+      expect(mockUploadRacketPhoto).toHaveBeenCalledWith(
+        'user-1',
+        'file:///tmp/racket.jpg',
+        expect.any(Blob),
+      ),
+    );
+    expect(mockAddRacket).toHaveBeenCalledWith(
+      expect.objectContaining({
+        photo_url: 'https://storage.example.com/racket.jpg',
+      }),
+    );
+  });
+});

@@ -1,0 +1,957 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Button variant와 로딩 상태를 렌더링하고 스냅샷을 유지한다 1`] = `
+[
+  <View
+    accessibilityLabel="예약하기"
+    accessibilityRole="button"
+    accessibilityState={
+      {
+        "busy": false,
+        "checked": undefined,
+        "disabled": false,
+        "expanded": undefined,
+        "selected": undefined,
+      }
+    }
+    accessibilityValue={
+      {
+        "max": undefined,
+        "min": undefined,
+        "now": undefined,
+        "text": undefined,
+      }
+    }
+    accessible={true}
+    collapsable={false}
+    focusable={true}
+    onBlur={[Function]}
+    onClick={[Function]}
+    onFocus={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
+    style={
+      [
+        {
+          "alignItems": "center",
+          "borderRadius": 12,
+          "flexDirection": "row",
+          "gap": 8,
+          "justifyContent": "center",
+        },
+        {
+          "minHeight": 36,
+          "paddingHorizontal": 16,
+          "paddingVertical": 8,
+        },
+        {
+          "borderWidth": 1,
+        },
+        {
+          "backgroundColor": "#103c28",
+          "borderColor": "#103c28",
+        },
+        false,
+        false,
+        undefined,
+      ]
+    }
+  >
+    <Text
+      style={
+        [
+          {
+            "color": "#0a140f",
+            "fontFamily": "Geist, System",
+            "fontSize": 14,
+            "fontWeight": "500",
+            "lineHeight": 20,
+          },
+          {
+            "color": "#0a140f",
+            "fontFamily": "Geist, System",
+            "fontSize": 14,
+            "fontWeight": "500",
+            "lineHeight": 20,
+          },
+          {
+            "color": "#fcfaf4",
+          },
+          undefined,
+        ]
+      }
+    >
+      예약하기
+    </Text>
+  </View>,
+  <View
+    accessibilityLabel="보조 버튼"
+    accessibilityRole="button"
+    accessibilityState={
+      {
+        "busy": false,
+        "checked": undefined,
+        "disabled": false,
+        "expanded": undefined,
+        "selected": undefined,
+      }
+    }
+    accessibilityValue={
+      {
+        "max": undefined,
+        "min": undefined,
+        "now": undefined,
+        "text": undefined,
+      }
+    }
+    accessible={true}
+    collapsable={false}
+    focusable={true}
+    onBlur={[Function]}
+    onClick={[Function]}
+    onFocus={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
+    style={
+      [
+        {
+          "alignItems": "center",
+          "borderRadius": 12,
+          "flexDirection": "row",
+          "gap": 8,
+          "justifyContent": "center",
+        },
+        {
+          "minHeight": 36,
+          "paddingHorizontal": 16,
+          "paddingVertical": 8,
+        },
+        {
+          "borderWidth": 1,
+        },
+        {
+          "backgroundColor": "#f0efe7",
+          "borderColor": "#f0efe7",
+        },
+        false,
+        false,
+        undefined,
+      ]
+    }
+  >
+    <Text
+      style={
+        [
+          {
+            "color": "#0a140f",
+            "fontFamily": "Geist, System",
+            "fontSize": 14,
+            "fontWeight": "500",
+            "lineHeight": 20,
+          },
+          {
+            "color": "#0a140f",
+            "fontFamily": "Geist, System",
+            "fontSize": 14,
+            "fontWeight": "500",
+            "lineHeight": 20,
+          },
+          {
+            "color": "#14261d",
+          },
+          undefined,
+        ]
+      }
+    >
+      보조 버튼
+    </Text>
+  </View>,
+  <View
+    accessibilityLabel="외곽 버튼"
+    accessibilityRole="button"
+    accessibilityState={
+      {
+        "busy": false,
+        "checked": undefined,
+        "disabled": false,
+        "expanded": undefined,
+        "selected": undefined,
+      }
+    }
+    accessibilityValue={
+      {
+        "max": undefined,
+        "min": undefined,
+        "now": undefined,
+        "text": undefined,
+      }
+    }
+    accessible={true}
+    collapsable={false}
+    focusable={true}
+    onBlur={[Function]}
+    onClick={[Function]}
+    onFocus={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
+    style={
+      [
+        {
+          "alignItems": "center",
+          "borderRadius": 12,
+          "flexDirection": "row",
+          "gap": 8,
+          "justifyContent": "center",
+        },
+        {
+          "minHeight": 36,
+          "paddingHorizontal": 16,
+          "paddingVertical": 8,
+        },
+        {
+          "borderWidth": 1,
+        },
+        {
+          "backgroundColor": "#fcfaf4",
+          "borderColor": "#dfded7",
+          "elevation": 2,
+          "shadowColor": "#0a140f",
+          "shadowOffset": {
+            "height": 2,
+            "width": 0,
+          },
+          "shadowOpacity": 0.08,
+          "shadowRadius": 8,
+        },
+        false,
+        false,
+        undefined,
+      ]
+    }
+  >
+    <Text
+      style={
+        [
+          {
+            "color": "#0a140f",
+            "fontFamily": "Geist, System",
+            "fontSize": 14,
+            "fontWeight": "500",
+            "lineHeight": 20,
+          },
+          {
+            "color": "#0a140f",
+            "fontFamily": "Geist, System",
+            "fontSize": 14,
+            "fontWeight": "500",
+            "lineHeight": 20,
+          },
+          {
+            "color": "#0a140f",
+          },
+          undefined,
+        ]
+      }
+    >
+      외곽 버튼
+    </Text>
+  </View>,
+  <View
+    accessibilityLabel="저장 중"
+    accessibilityRole="button"
+    accessibilityState={
+      {
+        "busy": true,
+        "checked": undefined,
+        "disabled": true,
+        "expanded": undefined,
+        "selected": undefined,
+      }
+    }
+    accessibilityValue={
+      {
+        "max": undefined,
+        "min": undefined,
+        "now": undefined,
+        "text": undefined,
+      }
+    }
+    accessible={true}
+    collapsable={false}
+    focusable={true}
+    onBlur={[Function]}
+    onClick={[Function]}
+    onFocus={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
+    style={
+      [
+        {
+          "alignItems": "center",
+          "borderRadius": 12,
+          "flexDirection": "row",
+          "gap": 8,
+          "justifyContent": "center",
+        },
+        {
+          "minHeight": 36,
+          "paddingHorizontal": 16,
+          "paddingVertical": 8,
+        },
+        {
+          "borderWidth": 1,
+        },
+        {
+          "backgroundColor": "#103c28",
+          "borderColor": "#103c28",
+        },
+        {
+          "opacity": 0.5,
+        },
+        false,
+        undefined,
+      ]
+    }
+  >
+    <ActivityIndicator
+      color="#fcfaf4"
+      size="small"
+      testID="button-loading-spinner"
+    />
+    <Text
+      style={
+        [
+          {
+            "color": "#0a140f",
+            "fontFamily": "Geist, System",
+            "fontSize": 14,
+            "fontWeight": "500",
+            "lineHeight": 20,
+          },
+          {
+            "color": "#0a140f",
+            "fontFamily": "Geist, System",
+            "fontSize": 14,
+            "fontWeight": "500",
+            "lineHeight": 20,
+          },
+          {
+            "color": "#fcfaf4",
+          },
+          undefined,
+        ]
+      }
+    >
+      저장 중
+    </Text>
+  </View>,
+]
+`;
+
+exports[`Input 라벨과 에러 메시지를 렌더링하고 스냅샷을 유지한다 1`] = `
+<View
+  style={
+    [
+      {
+        "gap": 8,
+        "width": "100%",
+      },
+      undefined,
+    ]
+  }
+>
+  <Text
+    style={
+      [
+        {
+          "color": "#0a140f",
+          "fontFamily": "Geist, System",
+          "fontSize": 14,
+          "fontWeight": "500",
+          "lineHeight": 20,
+        },
+        undefined,
+      ]
+    }
+  >
+    비밀번호
+  </Text>
+  <View
+    style={
+      [
+        {
+          "alignItems": "center",
+          "backgroundColor": "transparent",
+          "borderColor": "#e6e5dd",
+          "borderRadius": 12,
+          "elevation": 2,
+          "flexDirection": "row",
+          "paddingHorizontal": 12,
+          "shadowColor": "#0a140f",
+          "shadowOffset": {
+            "height": 2,
+            "width": 0,
+          },
+          "shadowOpacity": 0.08,
+          "shadowRadius": 8,
+        },
+        {
+          "borderWidth": 1,
+        },
+        {
+          "minHeight": 36,
+        },
+        {
+          "borderColor": "#de3b3d",
+        },
+        false,
+      ]
+    }
+  >
+    <TextInput
+      accessibilityLabel="비밀번호"
+      editable={true}
+      placeholder="비밀번호"
+      placeholderTextColor="#5c675d"
+      secureTextEntry={true}
+      style={
+        [
+          {
+            "color": "#0a140f",
+            "flex": 1,
+            "fontFamily": "Geist, System",
+            "fontSize": 16,
+            "lineHeight": 24,
+            "minHeight": 36,
+            "paddingVertical": 4,
+          },
+          undefined,
+          undefined,
+        ]
+      }
+      value=""
+    />
+    <View
+      accessibilityLabel="비밀번호 보기"
+      accessibilityRole="button"
+      accessibilityState={
+        {
+          "busy": undefined,
+          "checked": undefined,
+          "disabled": undefined,
+          "expanded": undefined,
+          "selected": undefined,
+        }
+      }
+      accessibilityValue={
+        {
+          "max": undefined,
+          "min": undefined,
+          "now": undefined,
+          "text": undefined,
+        }
+      }
+      accessible={true}
+      collapsable={false}
+      focusable={true}
+      onBlur={[Function]}
+      onClick={[Function]}
+      onFocus={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        [
+          {
+            "alignItems": "center",
+            "justifyContent": "center",
+            "paddingLeft": 8,
+          },
+          {
+            "minHeight": 32,
+          },
+        ]
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#103c28",
+            "fontFamily": "Geist, System",
+            "fontSize": 13,
+            "fontWeight": "500",
+            "lineHeight": 18,
+          }
+        }
+      >
+        보기
+      </Text>
+    </View>
+  </View>
+  <Text
+    accessibilityRole="alert"
+    style={
+      [
+        {
+          "color": "#de3b3d",
+          "fontFamily": "Geist, System",
+          "fontSize": 14,
+          "lineHeight": 20,
+        },
+        undefined,
+      ]
+    }
+  >
+    비밀번호를 입력해 주세요.
+  </Text>
+</View>
+`;
+
+exports[`공통 UI 컴포넌트 Card, Typography, LoadingSpinner, Badge, Tabs를 렌더링하고 스냅샷을 유지한다 1`] = `
+[
+  <View
+    style={
+      [
+        {
+          "backgroundColor": "#ffffff",
+          "borderColor": "#dfded7",
+          "borderRadius": 22,
+          "elevation": 2,
+          "gap": 24,
+          "paddingVertical": 24,
+          "shadowColor": "#0a140f",
+          "shadowOffset": {
+            "height": 2,
+            "width": 0,
+          },
+          "shadowOpacity": 0.08,
+          "shadowRadius": 8,
+        },
+        {
+          "borderWidth": 1,
+        },
+        undefined,
+      ]
+    }
+  >
+    <Text
+      style={
+        [
+          {
+            "color": "#0a140f",
+            "fontFamily": "Geist, System",
+          },
+          {
+            "fontFamily": "Manrope, Geist, System",
+            "fontSize": 32,
+            "fontWeight": "700",
+            "lineHeight": 40,
+          },
+          undefined,
+        ]
+      }
+    >
+      YellowBall
+    </Text>
+    <Text
+      style={
+        [
+          {
+            "color": "#0a140f",
+            "fontFamily": "Geist, System",
+          },
+          {
+            "fontFamily": "Manrope, Geist, System",
+            "fontSize": 24,
+            "fontWeight": "600",
+            "lineHeight": 32,
+          },
+          undefined,
+        ]
+      }
+    >
+      예약 현황
+    </Text>
+    <Text
+      style={
+        [
+          {
+            "color": "#0a140f",
+            "fontFamily": "Geist, System",
+          },
+          {
+            "color": "#0a140f",
+            "fontFamily": "Geist, System",
+            "fontSize": 16,
+            "fontWeight": "400",
+            "lineHeight": 24,
+          },
+          undefined,
+        ]
+      }
+    >
+      오늘의 스트링 작업
+    </Text>
+    <Text
+      style={
+        [
+          {
+            "color": "#0a140f",
+            "fontFamily": "Geist, System",
+          },
+          {
+            "color": "#5c675d",
+            "fontFamily": "Geist, System",
+            "fontSize": 12,
+            "fontWeight": "400",
+            "lineHeight": 16,
+          },
+          undefined,
+        ]
+      }
+    >
+      오후 7시 마감
+    </Text>
+  </View>,
+  <View
+    accessibilityLabel="로딩 중"
+    accessibilityRole="progressbar"
+    style={
+      [
+        {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "gap": 8,
+          "justifyContent": "center",
+        },
+        undefined,
+      ]
+    }
+    testID="loading-spinner"
+  >
+    <ActivityIndicator
+      color="#103c28"
+      size="small"
+      testID="activity-indicator"
+    />
+  </View>,
+  <View
+    accessibilityLabel="불러오는 중"
+    accessibilityRole="progressbar"
+    style={
+      [
+        {
+          "alignItems": "center",
+          "backgroundColor": "#fcfaf4",
+          "flex": 1,
+          "gap": 12,
+          "justifyContent": "center",
+          "padding": 24,
+        },
+        undefined,
+      ]
+    }
+    testID="loading-spinner-fullscreen"
+  >
+    <ActivityIndicator
+      color="#103c28"
+      size="small"
+      testID="activity-indicator"
+    />
+    <Text
+      style={
+        {
+          "color": "#5c675d",
+          "fontFamily": "Geist, System",
+          "fontSize": 16,
+          "lineHeight": 24,
+        }
+      }
+    >
+      불러오는 중
+    </Text>
+  </View>,
+  <Text
+    style={
+      [
+        {
+          "alignSelf": "flex-start",
+          "borderRadius": 8,
+          "color": "#5c675d",
+          "fontFamily": "Geist, System",
+          "fontSize": 12,
+          "fontWeight": "500",
+          "lineHeight": 16,
+          "overflow": "hidden",
+          "paddingHorizontal": 8,
+          "paddingVertical": 2,
+        },
+        {
+          "borderWidth": 1,
+        },
+        {
+          "backgroundColor": "#d5e43f",
+          "borderColor": "#d5e43f",
+          "color": "#002112",
+        },
+        undefined,
+      ]
+    }
+  >
+    완료
+  </Text>,
+  <Text
+    style={
+      [
+        {
+          "alignSelf": "flex-start",
+          "borderRadius": 8,
+          "color": "#5c675d",
+          "fontFamily": "Geist, System",
+          "fontSize": 12,
+          "fontWeight": "500",
+          "lineHeight": 16,
+          "overflow": "hidden",
+          "paddingHorizontal": 8,
+          "paddingVertical": 2,
+        },
+        {
+          "borderWidth": 1,
+        },
+        {
+          "backgroundColor": "#fff4cc",
+          "borderColor": "#f2d16b",
+          "color": "#594100",
+        },
+        undefined,
+      ]
+    }
+  >
+    대기
+  </Text>,
+  <View
+    style={
+      [
+        {
+          "gap": 8,
+        },
+        undefined,
+      ]
+    }
+    testID="main-tabs"
+  >
+    <View
+      style={
+        [
+          {
+            "alignSelf": "flex-start",
+            "backgroundColor": "#efefe9",
+            "borderRadius": 16,
+            "flexDirection": "row",
+            "minHeight": 36,
+            "padding": 3,
+          },
+          undefined,
+        ]
+      }
+    >
+      <View
+        accessibilityRole="tab"
+        accessibilityState={
+          {
+            "busy": undefined,
+            "checked": undefined,
+            "disabled": undefined,
+            "expanded": undefined,
+            "selected": true,
+          }
+        }
+        accessibilityValue={
+          {
+            "max": undefined,
+            "min": undefined,
+            "now": undefined,
+            "text": undefined,
+          }
+        }
+        accessible={true}
+        collapsable={false}
+        focusable={true}
+        onBlur={[Function]}
+        onClick={[Function]}
+        onFocus={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          [
+            {
+              "alignItems": "center",
+              "borderColor": "transparent",
+              "borderRadius": 12,
+              "justifyContent": "center",
+              "paddingHorizontal": 8,
+              "paddingVertical": 4,
+            },
+            {
+              "borderWidth": 1,
+            },
+            {
+              "minHeight": 30,
+            },
+            {
+              "backgroundColor": "#fcfaf4",
+              "elevation": 2,
+              "shadowColor": "#0a140f",
+              "shadowOffset": {
+                "height": 2,
+                "width": 0,
+              },
+              "shadowOpacity": 0.08,
+              "shadowRadius": 8,
+            },
+            undefined,
+            undefined,
+          ]
+        }
+      >
+        <Text
+          style={
+            [
+              {
+                "color": "#0a140f",
+                "fontFamily": "Geist, System",
+                "fontSize": 14,
+                "fontWeight": "500",
+                "lineHeight": 20,
+              },
+              {
+                "color": "#0a140f",
+              },
+              undefined,
+            ]
+          }
+        >
+          예약
+        </Text>
+      </View>
+      <View
+        accessibilityRole="tab"
+        accessibilityState={
+          {
+            "busy": undefined,
+            "checked": undefined,
+            "disabled": undefined,
+            "expanded": undefined,
+            "selected": false,
+          }
+        }
+        accessibilityValue={
+          {
+            "max": undefined,
+            "min": undefined,
+            "now": undefined,
+            "text": undefined,
+          }
+        }
+        accessible={true}
+        collapsable={false}
+        focusable={true}
+        onBlur={[Function]}
+        onClick={[Function]}
+        onFocus={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          [
+            {
+              "alignItems": "center",
+              "borderColor": "transparent",
+              "borderRadius": 12,
+              "justifyContent": "center",
+              "paddingHorizontal": 8,
+              "paddingVertical": 4,
+            },
+            {
+              "borderWidth": 1,
+            },
+            {
+              "minHeight": 30,
+            },
+            false,
+            undefined,
+            undefined,
+          ]
+        }
+      >
+        <Text
+          style={
+            [
+              {
+                "color": "#0a140f",
+                "fontFamily": "Geist, System",
+                "fontSize": 14,
+                "fontWeight": "500",
+                "lineHeight": 20,
+              },
+              false,
+              undefined,
+            ]
+          }
+        >
+          샵
+        </Text>
+      </View>
+    </View>
+    <View
+      style={
+        [
+          {
+            "flexGrow": 1,
+          },
+          undefined,
+        ]
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#0a140f",
+            "fontFamily": "Geist, System",
+            "fontSize": 16,
+            "lineHeight": 24,
+          }
+        }
+      >
+        예약 내용
+      </Text>
+    </View>
+  </View>,
+]
+`;
