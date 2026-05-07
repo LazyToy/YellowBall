@@ -1,7 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Switch, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'expo-router';
+import { StyleSheet, Switch, View } from 'react-native';
 
-import { Input } from '@/components/Input';
+import { TimePicker } from '@/components/CalendarPicker';
+import { FeedbackDialog } from '@/components/FeedbackDialog';
+import { BackButton } from '@/components/MobileUI';
+import { RefreshableScrollView } from '@/components/PageRefresh';
 import { Typography } from '@/components/Typography';
 import { lightColors, theme } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
@@ -21,20 +25,26 @@ type PreferenceKey = keyof Pick<
 >;
 
 export default function NotificationSettingsScreen() {
+  const router = useRouter();
   const { profile } = useAuth();
   const profileId = profile?.id;
   const [preferences, setPreferences] = useState<NotificationPreference>();
   const [message, setMessage] = useState<string>();
+  const [successDialog, setSuccessDialog] = useState(false);
 
-  useEffect(() => {
+  const loadPreferences = useCallback(async () => {
     if (!profileId) {
       return;
     }
 
-    getPreferences(profileId)
-      .then(setPreferences)
-      .catch(() => setMessage('알림 설정을 불러오지 못했습니다.'));
+    setPreferences(await getPreferences(profileId));
   }, [profileId]);
+
+  useEffect(() => {
+    loadPreferences().catch(() =>
+      setMessage('알림 설정을 불러오지 못했습니다.'),
+    );
+  }, [loadPreferences]);
 
   const updateToggle = async (key: PreferenceKey, value: boolean) => {
     if (!profileId || !preferences) {
@@ -45,7 +55,9 @@ export default function NotificationSettingsScreen() {
     setPreferences(nextPreferences);
 
     try {
-      setPreferences(await updatePreferences(profileId, { [key]: value }));
+      await updatePreferences(profileId, { [key]: value });
+      await loadPreferences();
+      setSuccessDialog(true);
     } catch {
       setPreferences(preferences);
       setMessage('알림 설정을 저장하지 못했습니다.');
@@ -64,7 +76,9 @@ export default function NotificationSettingsScreen() {
     setPreferences(nextPreferences);
 
     try {
-      setPreferences(await updatePreferences(profileId, { [key]: value }));
+      await updatePreferences(profileId, { [key]: value });
+      await loadPreferences();
+      setSuccessDialog(true);
     } catch {
       setPreferences(preferences);
       setMessage('야간 제한 시간을 저장하지 못했습니다.');
@@ -74,15 +88,30 @@ export default function NotificationSettingsScreen() {
   if (!preferences) {
     return (
       <View style={styles.container}>
-        <Typography variant="h1">알림 설정</Typography>
+        <View style={styles.titleRow}>
+          <BackButton onPress={() => router.back()} />
+          <Typography variant="h1">알림 설정</Typography>
+        </View>
         <Typography variant="body">설정을 불러오는 중입니다.</Typography>
       </View>
     );
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Typography variant="h1">알림 설정</Typography>
+    <RefreshableScrollView contentContainerStyle={styles.container}>
+      <FeedbackDialog
+        visible={successDialog}
+        title="알림 설정이 변경되었습니다"
+        message="확인을 누르면 내 정보로 이동합니다."
+        onConfirm={() => {
+          setSuccessDialog(false);
+          router.replace('/me');
+        }}
+      />
+      <View style={styles.titleRow}>
+        <BackButton onPress={() => router.back()} />
+        <Typography variant="h1">알림 설정</Typography>
+      </View>
       <ToggleRow
         description="끄면 예약 승인과 작업 상태 알림을 받을 수 없습니다."
         label="예약/작업 알림"
@@ -113,18 +142,16 @@ export default function NotificationSettingsScreen() {
         value={preferences.quiet_hours_enabled}
       />
       <View style={styles.timeRow}>
-        <Input
-          editable={preferences.quiet_hours_enabled}
+        <TimePicker
+          disabled={!preferences.quiet_hours_enabled}
           label="시작"
-          onChangeText={(value) => updateQuietHour('quiet_hours_start', value)}
-          placeholder="22:00"
+          onChange={(value) => updateQuietHour('quiet_hours_start', value)}
           value={preferences.quiet_hours_start ?? ''}
         />
-        <Input
-          editable={preferences.quiet_hours_enabled}
+        <TimePicker
+          disabled={!preferences.quiet_hours_enabled}
           label="종료"
-          onChangeText={(value) => updateQuietHour('quiet_hours_end', value)}
-          placeholder="08:00"
+          onChange={(value) => updateQuietHour('quiet_hours_end', value)}
           value={preferences.quiet_hours_end ?? ''}
         />
       </View>
@@ -133,7 +160,7 @@ export default function NotificationSettingsScreen() {
           {message}
         </Typography>
       ) : null}
-    </ScrollView>
+    </RefreshableScrollView>
   );
 }
 
@@ -188,6 +215,11 @@ const styles = StyleSheet.create({
   rowText: {
     flex: 1,
     gap: theme.spacing[1],
+  },
+  titleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing[2],
   },
   muted: {
     color: lightColors.mutedForeground.hex,

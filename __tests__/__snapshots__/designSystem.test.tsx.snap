@@ -397,19 +397,11 @@ exports[`Input 라벨과 에러 메시지를 렌더링하고 스냅샷을 유지
       [
         {
           "alignItems": "center",
-          "backgroundColor": "transparent",
+          "backgroundColor": "#ffffff",
           "borderColor": "#e6e5dd",
           "borderRadius": 12,
-          "elevation": 2,
           "flexDirection": "row",
           "paddingHorizontal": 12,
-          "shadowColor": "#0a140f",
-          "shadowOffset": {
-            "height": 2,
-            "width": 0,
-          },
-          "shadowOpacity": 0.08,
-          "shadowRadius": 8,
         },
         {
           "borderWidth": 1,
@@ -417,6 +409,7 @@ exports[`Input 라벨과 에러 메시지를 렌더링하고 스냅샷을 유지
         {
           "minHeight": 36,
         },
+        false,
         {
           "borderColor": "#de3b3d",
         },
@@ -427,6 +420,8 @@ exports[`Input 라벨과 에러 메시지를 렌더링하고 스냅샷을 유지
     <TextInput
       accessibilityLabel="비밀번호"
       editable={true}
+      onBlur={[Function]}
+      onFocus={[Function]}
       placeholder="비밀번호"
       placeholderTextColor="#5c675d"
       secureTextEntry={true}
@@ -445,6 +440,7 @@ exports[`Input 라벨과 에러 메시지를 렌더링하고 스냅샷을 유지
           undefined,
         ]
       }
+      underlineColorAndroid="transparent"
       value=""
     />
     <View

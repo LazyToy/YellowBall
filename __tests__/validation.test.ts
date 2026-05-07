@@ -1,4 +1,5 @@
 import {
+  validateEmail,
   validateNickname,
   validatePassword,
   validatePhone,
@@ -14,6 +15,18 @@ describe('회원가입 입력 검증', () => {
     });
   });
 
+  test('이메일은 기본 이메일 형식을 요구한다', () => {
+    expect(validateEmail('user@example.com')).toEqual({ valid: true });
+    expect(validateEmail('not-an-email')).toEqual({
+      valid: false,
+      error: '이메일 주소를 올바른 형식으로 입력해 주세요.',
+    });
+    expect(validateEmail('user@example.com', true)).toEqual({
+      valid: false,
+      error: '이미 가입된 이메일입니다.',
+    });
+  });
+
   test('비밀번호는 8자 이상이며 영문, 숫자, 특수문자를 포함해야 한다', () => {
     expect(validatePassword('Yellow1!')).toEqual({ valid: true });
     expect(validatePassword('yellowball')).toEqual({
@@ -26,7 +39,8 @@ describe('회원가입 입력 검증', () => {
     expect(validateUsername('yellow_01')).toEqual({ valid: true });
     expect(validateUsername('Yellow01')).toEqual({
       valid: false,
-      error: '아이디는 영문 소문자, 숫자, 언더스코어만 사용해 3~20자로 입력해 주세요.',
+      error:
+        '아이디는 영문 소문자, 숫자, 언더스코어만 사용해 3~20자로 입력해 주세요.',
     });
     expect(validateUsername('yellow_01', true)).toEqual({
       valid: false,

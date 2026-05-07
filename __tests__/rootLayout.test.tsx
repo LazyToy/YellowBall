@@ -29,6 +29,23 @@ jest.mock('expo-status-bar', () => ({
   StatusBar: () => null,
 }));
 
+jest.mock('react-native-safe-area-context', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+
+  return {
+    SafeAreaProvider: ({ children }: { children: React.ReactNode }) => (
+      <>{children}</>
+    ),
+    SafeAreaView: ({
+      children,
+      ...props
+    }: {
+      children: React.ReactNode;
+    }) => <View {...props}>{children}</View>,
+  };
+});
+
 jest.mock('../src/hooks/useAuth', () => ({
   syncAuthSession: mockSyncAuthSession,
   useAuth: mockUseAuth,
@@ -66,6 +83,14 @@ describe('RootLayout 인증 분기', () => {
 
     expect(source).toContain('onAuthStateChange');
     expect(source).toContain('refreshSession');
+  });
+
+  test('app/_layout.tsx에서 시스템 바 영역을 safe area로 제외한다', () => {
+    const source = readFileSync(join(process.cwd(), 'app/_layout.tsx'), 'utf8');
+
+    expect(source).toContain('SafeAreaProvider');
+    expect(source).toContain('SafeAreaView');
+    expect(source).toContain("edges={['top', 'bottom']}");
   });
 
   test('만료된 세션은 앱 시작 시 refreshSession으로 갱신한다', async () => {

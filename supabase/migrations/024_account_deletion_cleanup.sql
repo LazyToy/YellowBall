@@ -24,22 +24,50 @@ BEGIN
 
   v_count := array_length(v_target_ids, 1);
 
-  -- 1. 주소 삭제
-  DELETE FROM addresses WHERE user_id = ANY(v_target_ids);
+  -- 1. 예약 이력에 남을 수 있는 사용자 입력값 제거
+  UPDATE service_bookings
+  SET user_notes = NULL,
+      address_id = NULL,
+      updated_at = now()
+  WHERE user_id = ANY(v_target_ids);
 
-  -- 2. 라켓 사진 경로 수집 후 라켓 삭제 (Storage는 별도 정리)
-  DELETE FROM user_rackets WHERE owner_id = ANY(v_target_ids);
+  UPDATE demo_bookings
+  SET user_notes = NULL,
+      updated_at = now()
+  WHERE user_id = ANY(v_target_ids);
+
+  -- 2. 주소 삭제
+  DELETE FROM addresses WHERE user_id = ANY(v_target_ids);
 
   -- 3. 스트링 세팅 삭제
   DELETE FROM user_string_setups WHERE user_id = ANY(v_target_ids);
 
-  -- 4. 알림 삭제
+  -- 4. 예약 이력에서 참조될 수 있으므로 라켓 행은 삭제 대신 비식별 처리
+  UPDATE user_rackets
+  SET brand = '탈퇴 사용자',
+      model = '삭제된 라켓',
+      grip_size = NULL,
+      weight = NULL,
+      balance = NULL,
+      photo_url = NULL,
+      is_primary = false,
+      memo = NULL
+  WHERE owner_id = ANY(v_target_ids);
+
+  -- 5. 공개 라켓 사진 객체 정리
+  DELETE FROM storage.objects
+  WHERE bucket_id = 'racket-photos'
+    AND (storage.foldername(name))[1] IN (
+      SELECT id::text FROM unnest(v_target_ids) AS id
+    );
+
+  -- 6. 알림 삭제
   DELETE FROM notifications WHERE user_id = ANY(v_target_ids);
 
-  -- 5. 알림 설정 삭제
+  -- 7. 알림 설정 삭제
   DELETE FROM notification_preferences WHERE user_id = ANY(v_target_ids);
 
-  -- 6. 프로필 개인정보 비식별 처리 (예약/감사 기록 보존을 위해 행은 유지)
+  -- 8. 프로필 개인정보 비식별 처리 (예약/감사 기록 보존을 위해 행은 유지)
   PERFORM allow_profile_sensitive_update();
 
   UPDATE profiles
@@ -50,7 +78,7 @@ BEGIN
       updated_at = now()
   WHERE id = ANY(v_target_ids);
 
-  -- 7. 감사 로그 기록
+  -- 9. 감사 로그 기록
   INSERT INTO administrator_audit_logs (
     actor_id,
     action,
@@ -78,9 +106,4 @@ ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_status_check;
 ALTER TABLE profiles ADD CONSTRAINT profiles_status_check
   CHECK (status IN ('active', 'suspended', 'deleted_pending', 'deleted'));
 
--- pg_cron 작업 등록 (Supabase 대시보드 > SQL Editor에서 실행)
--- SELECT cron.schedule(
---   'cleanup-deleted-accounts',
---   '0 3 * * *',
---   $$SELECT cleanup_deleted_accounts()$$
--- );
+-- pg_cron 작업 등록은 026_schedule_account_cleanup_cron.sql에서 수행합니다.

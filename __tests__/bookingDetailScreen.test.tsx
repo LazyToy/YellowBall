@@ -1,15 +1,19 @@
 import React from 'react';
-import { render, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 
 const mockGetBookingDetail = jest.fn();
+const mockCancelBooking = jest.fn();
 
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: 'booking-1' }),
+  useRouter: () => ({
+    back: jest.fn(),
+  }),
 }));
 
 jest.mock('../src/services/bookingService', () => ({
   getBookingDetail: mockGetBookingDetail,
-  cancelBooking: jest.fn(),
+  cancelBooking: mockCancelBooking,
 }));
 
 const booking = {
@@ -21,8 +25,8 @@ const booking = {
   tension_main: 48,
   tension_cross: 46,
   slot_id: 'slot-1',
-  delivery_method: 'store_pickup',
-  address_id: null,
+  delivery_method: 'parcel',
+  address_id: 'address-1',
   status: 'approved',
   user_notes: '오전 방문',
   admin_notes: '라켓 확인 완료',
@@ -42,8 +46,15 @@ const booking = {
     name: 'RPM Blast',
   },
   booking_slots: {
-    start_time: '2026-05-04T09:00:00.000Z',
-    end_time: '2026-05-04T10:00:00.000Z',
+    start_time: '2026-05-04T00:00:00.000Z',
+    end_time: '2026-05-04T01:00:00.000Z',
+  },
+  addresses: {
+    recipient_name: '홍길동',
+    phone: '010-0000-0000',
+    postal_code: '06000',
+    address_line1: '서울시 강남구',
+    address_line2: '101호',
   },
 };
 
@@ -51,6 +62,12 @@ describe('BookingDetailScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetBookingDetail.mockResolvedValue(booking);
+    mockCancelBooking.mockResolvedValue({
+      booking: { ...booking, status: 'cancelled_user' },
+      cancelled: true,
+      requiresAdminApproval: false,
+      cancellationDeadline: '2099-05-04T09:00:00.000Z',
+    });
   });
 
   test('사용자 예약 상세 정보와 상태 타임라인을 표시한다', async () => {
@@ -67,8 +84,33 @@ describe('BookingDetailScreen', () => {
       screen.getByText('예약 시간 2026-05-04 09:00 - 2026-05-04 10:00'),
     ).toBeTruthy();
     expect(screen.getByText('텐션 48/46 lbs')).toBeTruthy();
+    expect(screen.getByText('수령 방식 택배')).toBeTruthy();
+    expect(
+      screen.getByText('배송지 홍길동 010-0000-0000 (06000) 서울시 강남구 101호'),
+    ).toBeTruthy();
     expect(screen.getByText('사용자 메모: 오전 방문')).toBeTruthy();
     expect(screen.getByText('관리자 메모: 라켓 확인 완료')).toBeTruthy();
     expect(screen.getByText('작업중')).toBeTruthy();
+  });
+
+  test('예약 취소 후 상세 데이터를 다시 조회한다', async () => {
+    const futureBooking = {
+      ...booking,
+      booking_slots: {
+        ...booking.booking_slots,
+        start_time: '2099-05-04T09:00:00.000Z',
+      },
+    };
+    mockGetBookingDetail
+      .mockResolvedValueOnce(futureBooking)
+      .mockResolvedValueOnce({ ...futureBooking, status: 'cancelled_user' });
+    const BookingDetailScreen = require('../app/(tabs)/booking-detail').default;
+    const screen = render(<BookingDetailScreen />);
+
+    await waitFor(() => expect(screen.getByText('예약 취소')).toBeTruthy());
+    fireEvent.press(screen.getByText('예약 취소'));
+
+    await waitFor(() => expect(mockCancelBooking).toHaveBeenCalledWith('booking-1', 'user-1'));
+    await waitFor(() => expect(mockGetBookingDetail).toHaveBeenCalledTimes(2));
   });
 });

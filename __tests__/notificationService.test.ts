@@ -50,6 +50,70 @@ const notification = {
 describe('notificationService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    Object.keys(secureStoreData).forEach((key) => {
+      delete secureStoreData[key];
+    });
+    secureStoreData.yellowball_notification_opt_in = 'true';
+  });
+
+  test('getNotificationOptInStatus는 미응답, 허용, 거절 상태를 구분한다', async () => {
+    const {
+      getNotificationOptInStatus,
+      setNotificationOptIn,
+    } = require('../src/services/notificationService');
+
+    delete secureStoreData.yellowball_notification_opt_in;
+    await expect(getNotificationOptInStatus()).resolves.toBeNull();
+
+    await setNotificationOptIn(false);
+    await expect(getNotificationOptInStatus()).resolves.toBe(false);
+
+    await setNotificationOptIn(true);
+    await expect(getNotificationOptInStatus()).resolves.toBe(true);
+  });
+
+  test('SecureStore 저장 실패 시 로컬 저장소로 opt-in 선택 상태를 유지한다', async () => {
+    const SecureStore = require('expo-secure-store');
+    const localStore: Record<string, string> = {};
+    const originalLocalStorage = global.localStorage;
+
+    Object.defineProperty(global, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: jest.fn((key: string) => localStore[key] ?? null),
+        setItem: jest.fn((key: string, value: string) => {
+          localStore[key] = value;
+        }),
+      },
+    });
+    SecureStore.getItemAsync.mockRejectedValueOnce(new Error('unavailable'));
+    SecureStore.setItemAsync.mockRejectedValueOnce(new Error('unavailable'));
+
+    const {
+      getNotificationOptInStatus,
+      setNotificationOptIn,
+    } = require('../src/services/notificationService');
+
+    await setNotificationOptIn(false);
+    await expect(getNotificationOptInStatus()).resolves.toBe(false);
+
+    Object.defineProperty(global, 'localStorage', {
+      configurable: true,
+      value: originalLocalStorage,
+    });
+  });
+
+  test('registerPushToken은 알림을 거절한 사용자의 시스템 권한을 다시 묻지 않는다', async () => {
+    secureStoreData.yellowball_notification_opt_in = 'false';
+    const rpc = jest.fn();
+    const { createNotificationService } = require('../src/services/notificationService');
+    const service = createNotificationService({ from: jest.fn(), rpc } as never);
+
+    await expect(service.registerPushToken('user-1')).resolves.toBeNull();
+
+    expect(mockGetPermissionsAsync).not.toHaveBeenCalled();
+    expect(mockRequestPermissionsAsync).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   test('registerPushToken은 권한 확인 후 Expo 토큰을 profiles에 저장한다', async () => {

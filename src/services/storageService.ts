@@ -7,6 +7,110 @@ type PublicPhotoBucket =
   | 'racket-photos'
   | 'string-photos'
   | 'demo-racket-photos';
+export type PublicStorageBucket = PublicPhotoBucket | 'app-assets';
+
+const publicUrlSchemes = /^(https?:|file:|data:|blob:)/i;
+const publicStorageBuckets: PublicStorageBucket[] = [
+  'app-assets',
+  'racket-photos',
+  'string-photos',
+  'demo-racket-photos',
+];
+const extensionContentTypes: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+};
+
+const encodeStoragePath = (path: string) =>
+  path
+    .split('/')
+    .filter(Boolean)
+    .map((part) => encodeURIComponent(part))
+    .join('/');
+
+const resolveBucketAndPath = (
+  bucket: PublicStorageBucket,
+  value: string,
+) => {
+  const path = value.trim().replace(/^\/+/, '');
+
+  for (const candidate of publicStorageBuckets) {
+    const publicPrefix = `storage/v1/object/public/${candidate}/`;
+
+    if (path.startsWith(publicPrefix)) {
+      return {
+        bucket: candidate,
+        path: path.slice(publicPrefix.length),
+      };
+    }
+
+    if (path.startsWith(`${candidate}/`)) {
+      return {
+        bucket: candidate,
+        path: path.slice(candidate.length + 1),
+      };
+    }
+  }
+
+  return { bucket, path };
+};
+
+export const getPublicStorageUrl = (
+  bucket: PublicStorageBucket,
+  value?: string | null,
+) => {
+  const trimmed = value?.trim();
+
+  if (!trimmed || publicUrlSchemes.test(trimmed)) {
+    return trimmed || null;
+  }
+
+  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL?.replace(/\/+$/, '');
+
+  if (!supabaseUrl) {
+    return trimmed;
+  }
+
+  const resolved = resolveBucketAndPath(bucket, trimmed);
+
+  return `${supabaseUrl}/storage/v1/object/public/${resolved.bucket}/${encodeStoragePath(
+    resolved.path,
+  )}`;
+};
+
+export const getAppAssetUrl = (value?: string | null) =>
+  getPublicStorageUrl('app-assets', value);
+
+export const getRacketPhotoUrl = (value?: string | null) =>
+  getPublicStorageUrl('racket-photos', value);
+
+export const getStringPhotoUrl = (value?: string | null) =>
+  getPublicStorageUrl('string-photos', value);
+
+export const getDemoRacketPhotoUrl = (value?: string | null) =>
+  getPublicStorageUrl('demo-racket-photos', value);
+
+const getPhotoFileInfo = (fileUri: string, blob: Blob) => {
+  const mimeExtension = blob.type.split('/')[1]?.replace('jpeg', 'jpg');
+  const uriExtension = fileUri
+    .split(/[?#]/)[0]
+    .split('.')
+    .pop()
+    ?.toLowerCase();
+  const extension =
+    mimeExtension && extensionContentTypes[mimeExtension]
+      ? mimeExtension
+      : uriExtension && extensionContentTypes[uriExtension]
+        ? uriExtension
+        : 'jpg';
+
+  return {
+    extension,
+    contentType: extensionContentTypes[extension] ?? 'image/jpeg',
+  };
+};
 
 const toServiceError = (message: string, error: unknown) => {
   if (
@@ -28,11 +132,11 @@ export const createStorageService = (client: StorageClient) => ({
     fileUri: string,
     blob: Blob,
   ) {
-    const extension = fileUri.split('.').pop() ?? 'jpg';
+    const { contentType, extension } = getPhotoFileInfo(fileUri, blob);
     const path = `${ownerId}/${Date.now()}.${extension}`;
     const bucketClient = client.storage.from(bucket);
     const { data, error } = await bucketClient.upload(path, blob, {
-      contentType: `image/${extension === 'png' ? 'png' : 'jpeg'}`,
+      contentType,
       upsert: false,
     });
 
@@ -58,12 +162,12 @@ export const createStorageService = (client: StorageClient) => ({
   },
 
   async uploadConditionPhoto(adminId: string, fileUri: string, blob: Blob) {
-    const extension = fileUri.split('.').pop() ?? 'jpg';
+    const { contentType, extension } = getPhotoFileInfo(fileUri, blob);
     const path = `${adminId}/${Date.now()}.${extension}`;
     const { data, error } = await client.storage
       .from('condition-photos')
       .upload(path, blob, {
-        contentType: `image/${extension === 'png' ? 'png' : 'jpeg'}`,
+        contentType,
         upsert: false,
       });
 

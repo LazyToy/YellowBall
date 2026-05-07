@@ -20,8 +20,8 @@ const demoRacket: DemoRacket = {
 const slot: BookingSlot = {
   id: 'slot-1',
   service_type: 'demo',
-  start_time: '2026-05-04T10:00:00.000Z',
-  end_time: '2026-05-04T12:00:00.000Z',
+  start_time: '2099-05-04T01:00:00.000Z',
+  end_time: '2099-05-04T03:00:00.000Z',
   capacity: 1,
   reserved_count: 0,
   is_blocked: false,
@@ -35,8 +35,8 @@ const demoBooking: DemoBooking = {
   user_id: 'user-1',
   demo_racket_id: 'demo-1',
   slot_id: 'slot-1',
-  start_time: '2026-05-04T10:00:00.000Z',
-  expected_return_time: '2026-05-04T12:00:00.000Z',
+  start_time: '2099-05-04T01:00:00.000Z',
+  expected_return_time: '2099-05-04T03:00:00.000Z',
   actual_return_time: null,
   status: 'requested',
   user_notes: null,
@@ -71,7 +71,7 @@ const input = {
   userId: 'user-1',
   demoRacketId: 'demo-1',
   slotId: 'slot-1',
-  expectedReturnTime: '2026-05-04T12:00:00.000Z',
+  expectedReturnTime: '2099-05-04T03:00:00.000Z',
 };
 
 describe('demoBookingService', () => {
@@ -99,8 +99,8 @@ describe('demoBookingService', () => {
       p_user_id: 'user-1',
       p_demo_racket_id: 'demo-1',
       p_slot_id: 'slot-1',
-      p_start_time: '2026-05-04T10:00:00.000Z',
-      p_expected_return_time: '2026-05-04T12:00:00.000Z',
+      p_start_time: '2099-05-04T01:00:00.000Z',
+      p_expected_return_time: '2099-05-04T03:00:00.000Z',
       p_user_notes: null,
     });
     expect(JSON.stringify(rpc.mock.calls[0][1])).not.toContain('string');
@@ -128,8 +128,8 @@ describe('demoBookingService', () => {
         .mockReturnValueOnce(
           overlapQuery([
             {
-              start_time: '2026-05-04T11:00:00.000Z',
-              expected_return_time: '2026-05-04T13:00:00.000Z',
+              start_time: '2099-05-04T02:00:00.000Z',
+              expected_return_time: '2099-05-04T04:00:00.000Z',
               status: 'approved',
             },
           ]),

@@ -4,8 +4,8 @@ import type { BookingSlot, ServiceBooking } from '../src/types/database';
 const slot: BookingSlot = {
   id: 'slot-1',
   service_type: 'stringing',
-  start_time: '2026-05-04T09:00:00.000Z',
-  end_time: '2026-05-04T10:00:00.000Z',
+  start_time: '2099-05-04T00:00:00.000Z',
+  end_time: '2099-05-04T01:00:00.000Z',
   capacity: 2,
   reserved_count: 1,
   is_blocked: false,
@@ -55,6 +55,45 @@ const input = {
 };
 
 describe('bookingService', () => {
+  test('getMyBookings는 취소 요청 로그가 있는 예약에 표시 플래그를 붙인다', async () => {
+    const bookingsOrder = jest.fn().mockResolvedValue({
+      data: [booking],
+      error: null,
+    });
+    const bookingsQuery = {
+      select: jest.fn(() => bookingsQuery),
+      eq: jest.fn(() => bookingsQuery),
+      in: jest.fn(() => bookingsQuery),
+      order: bookingsOrder,
+    };
+    const logsIn = jest.fn().mockResolvedValue({
+      data: [{ booking_id: 'booking-1' }],
+      error: null,
+    });
+    const logsQuery = {
+      select: jest.fn(() => logsQuery),
+      eq: jest.fn(() => logsQuery),
+      in: logsIn,
+    };
+    const from = jest
+      .fn()
+      .mockReturnValueOnce(bookingsQuery)
+      .mockReturnValueOnce(logsQuery);
+    const service = createBookingService({ from, rpc: jest.fn() } as never);
+
+    await expect(service.getMyBookings('user-1')).resolves.toEqual([
+      expect.objectContaining({
+        id: 'booking-1',
+        has_cancel_request: true,
+      }),
+    ]);
+
+    expect(from).toHaveBeenNthCalledWith(2, 'booking_status_logs');
+    expect(logsQuery.eq).toHaveBeenCalledWith('booking_type', 'service');
+    expect(logsQuery.eq).toHaveBeenCalledWith('new_status', 'cancel_requested');
+    expect(logsIn).toHaveBeenCalledWith('booking_id', ['booking-1']);
+  });
+
   test('createBooking은 사전 검증 후 RPC 트랜잭션으로 예약을 생성한다', async () => {
     const rpc = jest.fn().mockResolvedValue({ data: booking, error: null });
     const notificationService = {
@@ -99,6 +138,32 @@ describe('bookingService', () => {
         notificationType: 'admin_new_booking',
       }),
     );
+  });
+
+  test('createBooking returns the booking even if notification delivery fails', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: booking, error: null });
+    const notificationService = {
+      createStatusNotification: jest
+        .fn()
+        .mockRejectedValue(new Error('notification failed')),
+      notifyAdmins: jest.fn().mockRejectedValue(new Error('admin failed')),
+    };
+    const from = jest
+      .fn()
+      .mockReturnValueOnce(queryResult({ status: 'active' }))
+      .mockReturnValueOnce(queryResult({ id: 'racket-1', owner_id: 'user-1' }))
+      .mockReturnValueOnce(queryResult({ id: 'string-1', is_active: true }))
+      .mockReturnValueOnce(queryResult({ id: 'string-2', is_active: true }))
+      .mockReturnValueOnce(queryResult(slot));
+    const service = createBookingService(
+      { from, rpc } as never,
+      notificationService as never,
+      { isBookingRestricted: jest.fn().mockResolvedValue(false) } as never,
+    );
+
+    await expect(service.createBooking(input)).resolves.toEqual(booking);
+    expect(notificationService.createStatusNotification).toHaveBeenCalled();
+    expect(notificationService.notifyAdmins).toHaveBeenCalled();
   });
 
   test('만석/차단 슬롯과 제재 사용자를 거부한다', async () => {

@@ -7,6 +7,10 @@ const mockUpdateRacket = jest.fn();
 const mockDeleteRacket = jest.fn();
 const mockSetPrimaryRacket = jest.fn();
 const mockUploadRacketPhoto = jest.fn();
+const mockPush = jest.fn();
+let mockSearchParams: { editId?: string } = {};
+const mockLaunchImageLibraryAsync = jest.fn();
+const mockRequestMediaLibraryPermissionsAsync = jest.fn();
 
 const racket = {
   id: 'racket-1',
@@ -28,6 +32,21 @@ jest.mock('../src/hooks/useAuth', () => ({
   }),
 }));
 
+jest.mock('expo-router', () => ({
+  useLocalSearchParams: () => mockSearchParams,
+  useRouter: () => ({
+    back: jest.fn(),
+    push: mockPush,
+  }),
+}));
+
+jest.mock('expo-image-picker', () => ({
+  launchCameraAsync: jest.fn(),
+  launchImageLibraryAsync: mockLaunchImageLibraryAsync,
+  requestCameraPermissionsAsync: jest.fn(),
+  requestMediaLibraryPermissionsAsync: mockRequestMediaLibraryPermissionsAsync,
+}));
+
 jest.mock('../src/services/racketService', () => ({
   addRacket: mockAddRacket,
   deleteRacket: mockDeleteRacket,
@@ -43,13 +62,41 @@ jest.mock('../src/services/storageService', () => ({
 describe('RacketsScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockSearchParams = {};
     mockGetRackets.mockResolvedValue([racket]);
     mockAddRacket.mockResolvedValue(racket);
     mockUpdateRacket.mockResolvedValue({ ...racket, balance: '325mm' });
     mockUploadRacketPhoto.mockResolvedValue('https://storage.example.com/racket.jpg');
+    mockRequestMediaLibraryPermissionsAsync.mockResolvedValue({ granted: true });
+    mockLaunchImageLibraryAsync.mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: 'file:///tmp/racket.jpg' }],
+    });
     global.fetch = jest.fn().mockResolvedValue({
       blob: jest.fn().mockResolvedValue(new Blob(['photo'], { type: 'image/jpeg' })),
     }) as never;
+  });
+
+  test('editId로 진입하면 기존 라켓 값을 불러와 수정만 수행한다', async () => {
+    mockSearchParams = { editId: 'racket-1' };
+    const RacketsScreen = require('../app/(tabs)/rackets').default;
+    const screen = render(<RacketsScreen />);
+
+    await waitFor(() => expect(screen.getByDisplayValue('Wilson')).toBeTruthy());
+    expect(screen.getByDisplayValue('Blade')).toBeTruthy();
+
+    fireEvent.changeText(screen.getByLabelText('모델'), 'Blade 98');
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('라켓 수정 저장'));
+    });
+
+    await waitFor(() =>
+      expect(mockUpdateRacket).toHaveBeenCalledWith(
+        'racket-1',
+        expect.objectContaining({ model: 'Blade 98' }),
+      ),
+    );
+    expect(mockAddRacket).not.toHaveBeenCalled();
   });
 
   test('상세와 수정 플로우에서 무게/밸런스/사진 필드를 다룬다', async () => {
@@ -61,6 +108,10 @@ describe('RacketsScreen', () => {
     fireEvent.press(screen.getByLabelText('Blade 라켓 상세'));
     expect(screen.getByText('라켓 상세')).toBeTruthy();
     expect(screen.getByText('사진 https://example.com/racket.jpg')).toBeTruthy();
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/racket-detail',
+      params: { id: 'racket-1' },
+    });
 
     fireEvent.press(screen.getByLabelText('Blade 라켓 수정'));
     fireEvent.changeText(screen.getByLabelText('밸런스'), '325mm');
@@ -88,7 +139,9 @@ describe('RacketsScreen', () => {
     fireEvent.changeText(screen.getByLabelText('브랜드'), 'Head');
     fireEvent.changeText(screen.getByLabelText('모델'), 'Speed');
     fireEvent.changeText(screen.getByLabelText('무게(g)'), '300');
-    fireEvent.changeText(screen.getByLabelText('사진 파일 URI'), 'file:///tmp/racket.jpg');
+    await act(async () => {
+      fireEvent.press(screen.getByText('사진 첨부'));
+    });
     await act(async () => {
       fireEvent.press(screen.getByLabelText('라켓 추가'));
     });

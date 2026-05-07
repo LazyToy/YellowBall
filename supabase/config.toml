@@ -1,0 +1,8 @@
+[functions.send-notification]
+verify_jwt = false
+
+[functions.check-username]
+verify_jwt = false
+
+[functions.check-email]
+verify_jwt = false

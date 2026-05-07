@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/Button';
+import { BackButton } from '@/components/MobileUI';
+import { RefreshableScrollView } from '@/components/PageRefresh';
 import { Typography } from '@/components/Typography';
 import { lightColors, theme } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
@@ -14,6 +17,7 @@ import {
 import type { AppNotification } from '@/types/database';
 
 export default function NotificationsScreen() {
+  const router = useRouter();
   const { profile } = useAuth();
   const profileId = profile?.id;
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -32,9 +36,12 @@ export default function NotificationsScreen() {
   }, [loadNotifications]);
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <RefreshableScrollView contentContainerStyle={styles.container}>
       <View style={styles.header}>
-        <Typography variant="h1">알림함</Typography>
+        <View style={styles.titleRow}>
+          <BackButton onPress={() => router.back()} />
+          <Typography variant="h1">알림함</Typography>
+        </View>
         <Button
           accessibilityLabel="모두 읽음"
         onPress={() =>
@@ -94,7 +101,7 @@ export default function NotificationsScreen() {
           {message}
         </Typography>
       ) : null}
-    </ScrollView>
+    </RefreshableScrollView>
   );
 }
 
@@ -109,6 +116,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
+  },
+  titleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing[2],
   },
   card: {
     backgroundColor: lightColors.card.hex,

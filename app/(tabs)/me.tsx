@@ -1,17 +1,134 @@
-import React, { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { Button } from '@/components/Button';
+import { AppIcon, type AppIconName } from '@/components/AppIcon';
+import { FeedbackDialog } from '@/components/FeedbackDialog';
+import {
+  AppScrollView,
+  Card,
+  Chevron,
+  GlyphBubble,
+  PageHeader,
+  Pill,
+  ProductThumb,
+  RowButton,
+  SectionHeader,
+} from '@/components/MobileUI';
 import { Input } from '@/components/Input';
-import { Typography } from '@/components/Typography';
 import { lightColors, theme } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
-import { updateProfile } from '@/services/profileService';
+import { useAppMenuSettings } from '@/hooks/useAppMenuSettings';
+import { useResetOnBlur } from '@/hooks/useResetOnBlur';
+import { getRacketPhotoUrl } from '@/services/storageService';
+import { getProfile, updateProfile } from '@/services/profileService';
+import { getMyBookings } from '@/services/bookingService';
+import { getMyDemoBookings } from '@/services/demoBookingService';
+import { getRackets } from '@/services/racketService';
+import type { MenuId } from '@/services/appMenuSettingsService';
+import type { Profile, UserRacket } from '@/types/database';
+
+type ProfileMetricContent = {
+  label: string;
+  value: string;
+};
+
+type MeProfileSummary = {
+  membershipLabel: string;
+  storeName: string;
+  joinedAtLabel: string;
+};
+
+type MeStat = {
+  label: string;
+  value: number;
+  icon: AppIconName;
+};
+
+type MeRacket = {
+  id: string;
+  name: string;
+  image_path?: string | null;
+  image_url?: string | null;
+  string: string;
+  lastService: string;
+  main: boolean;
+  tone: 'primary' | 'accent' | 'secondary' | 'card';
+};
+
+type MeMenuGroup = {
+  title: string;
+  items: {
+    label: string;
+    route?: string;
+    unavailableMessage?: string;
+    glyph: string;
+    badge?: string;
+    menuId?: MenuId | null;
+  }[];
+};
+
+const menuGroups: MeMenuGroup[] = [
+  {
+    title: '쇼핑',
+    items: [
+      { label: '주문 내역', route: '/orders', glyph: 'O', menuId: 'shop' },
+    ],
+  },
+  {
+    title: '계정',
+    items: [
+      { label: '배송지 관리', route: '/addresses', glyph: 'A', menuId: 'delivery' },
+      { label: '알림 설정', route: '/notification-settings', glyph: 'N' },
+    ],
+  },
+  {
+    title: '고객지원',
+    items: [
+      {
+        label: '공지사항',
+        unavailableMessage: '공지사항 기능은 준비 중입니다.',
+        glyph: 'D',
+      },
+      {
+        label: '문의하기',
+        unavailableMessage: '문의하기 기능은 준비 중입니다.',
+        glyph: 'Q',
+      },
+    ],
+  },
+];
+
+const formatJoinedAt = (value?: string | null) =>
+  value
+    ? new Intl.DateTimeFormat('ko-KR', {
+        month: '2-digit',
+        year: 'numeric',
+      }).format(new Date(value))
+    : '-';
+
+const getMembershipLabel = (profile?: Profile | null) =>
+  profile?.role === 'super_admin'
+    ? 'SUPER'
+    : profile?.role === 'admin'
+      ? 'ADMIN'
+      : 'MEMBER';
+
+const toMeRacket = (racket: UserRacket): MeRacket => ({
+  id: racket.id,
+  image_url: racket.photo_url,
+  lastService: '-',
+  main: Boolean(racket.is_primary),
+  name: `${racket.brand} ${racket.model}`,
+  string: '스트링 미등록',
+  tone: racket.is_primary ? 'primary' : 'accent',
+});
 
 export default function MeScreen() {
   const router = useRouter();
   const { profile, signOut } = useAuth();
+  const menuSettings = useAppMenuSettings();
   const profileId = profile?.id;
   const [profileOverride, setProfileOverride] = useState<typeof profile>(null);
   const currentProfile = profileOverride ?? profile;
@@ -20,16 +137,111 @@ export default function MeScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [nickname, setNickname] = useState(currentProfile?.nickname ?? '');
   const [phone, setPhone] = useState(currentProfile?.phone ?? '');
+  const [profileSummary, setProfileSummary] = useState<MeProfileSummary | null>(
+    null,
+  );
+  const [profileMetrics, setProfileMetrics] = useState<ProfileMetricContent[]>(
+    [],
+  );
+  const [stats, setStats] = useState<MeStat[]>([]);
+  const [rackets, setRackets] = useState<MeRacket[]>([]);
   const [errorMessage, setErrorMessage] = useState<string>();
   const [successMessage, setSuccessMessage] = useState<string>();
+  const [successDialog, setSuccessDialog] = useState(false);
+
+  const resetForm = useCallback(() => {
+    setIsEditing(false);
+    setIsSaving(false);
+    setNickname(currentProfile?.nickname ?? '');
+    setPhone(currentProfile?.phone ?? '');
+    setErrorMessage(undefined);
+    setSuccessMessage(undefined);
+    setSuccessDialog(false);
+  }, [currentProfile?.nickname, currentProfile?.phone]);
+
+  useResetOnBlur(resetForm);
 
   useEffect(() => {
     setProfileOverride(null);
   }, [profileId]);
 
+  useEffect(() => {
+    let mounted = true;
+
+    if (!currentProfile) {
+      setProfileSummary(null);
+      setProfileMetrics([]);
+      setStats([]);
+      setRackets([]);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    Promise.all([
+      getMyBookings(currentProfile.id),
+      getMyDemoBookings(currentProfile.id),
+      getRackets(currentProfile.id),
+    ])
+      .then(([serviceBookings, demoBookings, userRackets]) => {
+        if (!mounted) {
+          return;
+        }
+
+        setProfileSummary({
+          joinedAtLabel: `가입 ${formatJoinedAt(currentProfile.created_at)}`,
+          membershipLabel: getMembershipLabel(currentProfile),
+          storeName: 'YellowBall',
+        });
+        setProfileMetrics([
+          { label: '스트링 예약', value: `${serviceBookings.length}` },
+          { label: '데모 예약', value: `${demoBookings.length}` },
+          { label: '내 라켓', value: `${userRackets.length}` },
+        ]);
+        setStats([
+          { icon: 'wrench', label: '스트링 작업', value: serviceBookings.length },
+          { icon: 'sparkles', label: '데모', value: demoBookings.length },
+          { icon: 'package', label: '라켓', value: userRackets.length },
+          {
+            icon: 'calendar-check',
+            label: '진행 중',
+            value:
+              serviceBookings.filter(
+                (booking) =>
+                  ![
+                    'delivered',
+                    'done',
+                    'cancelled_user',
+                    'cancelled_admin',
+                    'rejected',
+                    'no_show',
+                    'refund_done',
+                  ].includes(booking.status),
+              ).length +
+              demoBookings.filter(
+                (booking) =>
+                  ![
+                    'returned',
+                    'cancelled_user',
+                    'cancelled_admin',
+                    'rejected',
+                    'no_show',
+                  ].includes(booking.status),
+              ).length,
+          },
+        ]);
+        setRackets(userRackets.map(toMeRacket));
+      })
+      .catch(() => undefined);
+
+    return () => {
+      mounted = false;
+    };
+  }, [currentProfile]);
+
   const handleSaveProfile = async () => {
     if (!currentProfile) {
-      setErrorMessage('프로필을 불러온 뒤 다시 시도해 주세요.');
+      setErrorMessage('프로필을 불러온 뒤 다시 시도해주세요.');
       return;
     }
 
@@ -38,15 +250,17 @@ export default function MeScreen() {
     setSuccessMessage(undefined);
 
     try {
-      const updatedProfile = await updateProfile(currentProfile.id, {
+      await updateProfile(currentProfile.id, {
         nickname,
-        phone,
+        phone: phone.trim() || null,
       });
+      const updatedProfile = await getProfile(currentProfile.id);
       setProfileOverride(updatedProfile);
       setNickname(updatedProfile.nickname);
-      setPhone(updatedProfile.phone);
+      setPhone(updatedProfile.phone ?? '');
       setIsEditing(false);
       setSuccessMessage('프로필이 저장되었습니다.');
+      setSuccessDialog(true);
     } catch (error) {
       setErrorMessage(
         error instanceof Error
@@ -69,55 +283,159 @@ export default function MeScreen() {
       setErrorMessage(
         error instanceof Error
           ? error.message
-          : '로그아웃에 실패했습니다. 잠시 후 다시 시도해 주세요.',
+          : '로그아웃에 실패했습니다. 잠시 후 다시 시도해주세요.',
       );
     } finally {
       setIsSigningOut(false);
     }
   };
 
-  return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Typography variant="caption" style={styles.eyebrow}>
-          My YellowBall
-        </Typography>
-        <Typography variant="h1">마이</Typography>
-        <Typography variant="body" style={styles.description}>
-          내 예약과 계정 정보를 확인할 수 있습니다.
-        </Typography>
-      </View>
+  const handleMenuPress = (item: MeMenuGroup['items'][number]) => {
+    if (item.route) {
+      router.push(item.route);
+      return;
+    }
 
-      <View style={styles.profileCard}>
-        <View style={styles.avatar}>
-          <Typography variant="h2" style={styles.avatarText}>
-            {(currentProfile?.nickname ?? 'Y').slice(0, 1)}
-          </Typography>
-        </View>
-        <View style={styles.profileTextWrap}>
-          <Typography variant="h2">{currentProfile?.nickname ?? '회원'}</Typography>
-          <Typography variant="caption" style={styles.description}>
-            {currentProfile?.phone ?? '휴대폰 번호를 불러오는 중입니다.'}
-          </Typography>
-        </View>
+    setSuccessMessage(undefined);
+    setErrorMessage(item.unavailableMessage ?? '아직 준비 중인 기능입니다.');
+  };
+
+  const displayName =
+    currentProfile?.nickname ?? currentProfile?.username ?? '회원';
+  const displayContact =
+    currentProfile?.phone ??
+    currentProfile?.email ??
+    '연락처 정보를 불러오는 중입니다.';
+  const initials = displayName.slice(0, 2).toUpperCase();
+  const visibleMenuGroups = menuGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !item.menuId || menuSettings[item.menuId]),
+    }))
+    .filter((group) => group.items.length > 0);
+
+  return (
+    <AppScrollView>
+      <FeedbackDialog
+        visible={successDialog}
+        title="프로필이 저장되었습니다"
+        message="확인을 누르면 내 정보 화면을 확인할 수 있습니다."
+        onConfirm={() => setSuccessDialog(false)}
+      />
+      <PageHeader
+        title="마이"
+        right={
+          <Pressable
+            accessibilityLabel="설정"
+            accessibilityRole="button"
+            onPress={() => router.push('/notification-settings')}
+            style={({ pressed }) => [
+              styles.settingsButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            <AppIcon name="settings" size={20} />
+          </Pressable>
+        }
+      />
+
+      <View style={styles.section}>
+        <Card style={styles.profileCard}>
+          <View style={styles.profileGlowTop} />
+          <View style={styles.profileGlowBottom} />
+          <View style={styles.profileRow}>
+            <View style={styles.profileAvatar}>
+              <Text style={styles.profileAvatarText}>{initials}</Text>
+            </View>
+            <View style={styles.flex}>
+              <View style={styles.nameRow}>
+                <Text numberOfLines={1} style={styles.profileName}>
+                  {displayName}
+                </Text>
+                {profileSummary ? (
+                  <Pill tone="accent">{profileSummary.membershipLabel}</Pill>
+                ) : null}
+              </View>
+              <Text numberOfLines={1} style={styles.profileContact}>
+                {displayContact}
+              </Text>
+              <Text numberOfLines={1} style={styles.profileMeta}>
+                {profileSummary
+                  ? `${profileSummary.storeName} · ${profileSummary.joinedAtLabel}`
+                  : ''}
+              </Text>
+            </View>
+            <Pressable
+              accessibilityLabel={
+                isEditing ? '프로필 카드 수정 취소' : '프로필 카드 수정'
+              }
+              accessibilityRole="button"
+              onPress={() => {
+                setNickname(currentProfile?.nickname ?? '');
+                setPhone(currentProfile?.phone ?? '');
+                setIsEditing((editing) => !editing);
+              }}
+              style={styles.profileEditButton}
+            >
+              <Chevron />
+            </Pressable>
+          </View>
+
+          <View style={styles.profileStats}>
+            {profileMetrics.map((metric, index) => (
+              <React.Fragment key={metric.label}>
+                {index > 0 ? <View style={styles.metricDivider} /> : null}
+                <ProfileMetric label={metric.label} value={metric.value} />
+              </React.Fragment>
+            ))}
+          </View>
+        </Card>
       </View>
 
       <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Typography variant="h2">프로필 정보</Typography>
-          <Button
-            accessibilityLabel={isEditing ? '프로필 수정 취소' : '프로필 수정'}
-            onPress={() => {
-              setNickname(currentProfile?.nickname ?? '');
-              setPhone(currentProfile?.phone ?? '');
-              setIsEditing((editing) => !editing);
-            }}
-            size="sm"
-            variant="outline"
-          >
-            {isEditing ? '취소' : '수정'}
-          </Button>
-        </View>
+        <Card style={styles.statsGrid}>
+          {stats.map((item) => (
+            <Pressable
+              accessibilityLabel={item.label}
+              accessibilityRole="button"
+              key={item.label}
+              style={({ pressed }) => [
+                styles.statItem,
+                pressed && styles.pressed,
+              ]}
+            >
+              <AppIcon
+                color={lightColors.primary.hex}
+                name={item.icon}
+                size={18}
+              />
+              <Text style={styles.statValue}>{item.value}</Text>
+              <Text style={styles.statLabel}>{item.label}</Text>
+            </Pressable>
+          ))}
+        </Card>
+      </View>
+
+      <View style={styles.section}>
+        <SectionHeader
+          title="프로필 정보"
+          action={
+            <Button
+              accessibilityLabel={
+                isEditing ? '프로필 수정 취소' : '프로필 수정'
+              }
+              onPress={() => {
+                setNickname(currentProfile?.nickname ?? '');
+                setPhone(currentProfile?.phone ?? '');
+                setIsEditing((editing) => !editing);
+              }}
+              size="sm"
+              variant="outline"
+            >
+              {isEditing ? '취소' : '수정'}
+            </Button>
+          }
+        />
         <Input
           editable={false}
           label="아이디"
@@ -127,14 +445,14 @@ export default function MeScreen() {
           editable={isEditing}
           label="닉네임"
           onChangeText={setNickname}
-          value={nickname}
+          value={isEditing ? nickname : (currentProfile?.nickname ?? '')}
         />
         <Input
           editable={isEditing}
           keyboardType="phone-pad"
           label="전화번호"
           onChangeText={setPhone}
-          value={phone}
+          value={isEditing ? phone : (currentProfile?.phone ?? '')}
         />
         {isEditing ? (
           <Button
@@ -147,152 +465,360 @@ export default function MeScreen() {
         ) : null}
       </View>
 
-      <View style={styles.menuList}>
-        <MenuItem label="주소 관리" onPress={() => router.push('/addresses')} />
-        <MenuItem label="내 라켓" onPress={() => router.push('/rackets')} />
-        <MenuItem label="스트링 세팅" onPress={() => router.push('/string-setups')} />
-        <MenuItem
-          label="알림 설정"
-          onPress={() => router.push('/notification-settings')}
+      {menuSettings['racket-library'] ? (
+      <View style={styles.section}>
+        <SectionHeader
+          title="내 라켓"
+          action={
+            <Pressable
+              accessibilityLabel="라켓 추가"
+              accessibilityRole="button"
+              onPress={() => router.push('/rackets')}
+            >
+              <Text style={styles.linkText}>추가</Text>
+            </Pressable>
+          }
         />
-        <MenuItem label="알림함" onPress={() => router.push('/notifications')} />
-        <MenuItem
-          label="계정 탈퇴"
-          onPress={() => router.push('/account-deletion')}
-        />
+        <View style={styles.racketList}>
+          {rackets.map((racket) => (
+            <RowButton
+              accessibilityLabel={`${racket.name} 관리`}
+              key={racket.name}
+              onPress={() =>
+                router.push({
+                  pathname: '/rackets',
+                  params: { editId: racket.id },
+                })
+              }
+              style={styles.racketCard}
+            >
+              <ProductThumb
+                imageUrl={getRacketPhotoUrl(racket.image_path ?? racket.image_url)}
+                label={racket.name.split(' ')[0]}
+                tone={racket.tone}
+              />
+              <View style={styles.flex}>
+                <View style={styles.nameRow}>
+                  <Text numberOfLines={1} style={styles.racketTitle}>
+                    {racket.name}
+                  </Text>
+                  {racket.main ? <Pill tone="accent">메인</Pill> : null}
+                </View>
+                <Text numberOfLines={1} style={styles.mutedText}>
+                  {racket.string}
+                </Text>
+                <Text style={styles.metaText}>
+                  최근 작업 · {racket.lastService}
+                </Text>
+              </View>
+              <AppIcon
+                color={lightColors.mutedForeground.hex}
+                name="more-horizontal"
+                size={18}
+              />
+            </RowButton>
+          ))}
+        </View>
+      </View>
+      ) : null}
+
+      <View style={styles.menuSection}>
+        {visibleMenuGroups.map((group) => (
+          <View key={group.title} style={styles.menuGroup}>
+            <Text style={styles.menuGroupTitle}>{group.title}</Text>
+            <Card style={styles.menuCard}>
+              {group.items.map((item, index) => (
+                <RowButton
+                  accessibilityLabel={item.label}
+                  key={item.label}
+                  onPress={() => handleMenuPress(item)}
+                  style={[
+                    styles.menuItem,
+                    index !== group.items.length - 1 && styles.menuItemDivider,
+                  ]}
+                >
+                  <GlyphBubble glyph={item.glyph} tone="secondary" size={32} />
+                  <Text style={styles.menuLabel}>{item.label}</Text>
+                  {'badge' in item && item.badge ? (
+                    <Pill>{item.badge}</Pill>
+                  ) : null}
+                  <Chevron />
+                </RowButton>
+              ))}
+            </Card>
+          </View>
+        ))}
       </View>
 
       {errorMessage ? (
-        <Typography
-          accessibilityRole="alert"
-          variant="caption"
-          style={styles.errorText}
-        >
-          {errorMessage}
-        </Typography>
+        <Text style={styles.errorText}>{errorMessage}</Text>
       ) : null}
-
       {successMessage ? (
-        <Typography
-          accessibilityRole="alert"
-          variant="caption"
-          style={styles.successText}
-        >
-          {successMessage}
-        </Typography>
+        <Text style={styles.successText}>{successMessage}</Text>
       ) : null}
 
-      <Button
-        accessibilityLabel="로그아웃"
-        loading={isSigningOut}
-        onPress={handleSignOut}
-        variant="outline"
-      >
-        로그아웃
-      </Button>
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>YellowBall v1.0.0 · MVP</Text>
+        <Button
+          accessibilityLabel="로그아웃"
+          loading={isSigningOut}
+          onPress={handleSignOut}
+          size="sm"
+          variant="outline"
+        >
+          로그아웃
+        </Button>
+      </View>
+    </AppScrollView>
+  );
+}
+
+function ProfileMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.metricItem}>
+      <Text style={styles.metricLabel}>{label}</Text>
+      <Text style={styles.metricValue}>{value}</Text>
     </View>
   );
 }
 
-function MenuItem({
-  label,
-  onPress,
-}: {
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityLabel={label}
-      accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}
-    >
-      <Typography variant="body">{label}</Typography>
-      <Typography variant="body" style={styles.menuChevron}>
-        {'>'}
-      </Typography>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: lightColors.background.hex,
-    flex: 1,
-    gap: theme.spacing[5],
-    padding: theme.spacing[6],
-    paddingTop: theme.spacing[12],
+  section: {
+    gap: theme.spacing[3],
+    paddingHorizontal: theme.spacing[5],
   },
-  header: {
-    gap: theme.spacing[2],
-  },
-  eyebrow: {
-    color: lightColors.primary.hex,
-    fontWeight: theme.typography.fontWeight.semibold,
-    textTransform: 'uppercase',
-  },
-  description: {
-    color: lightColors.mutedForeground.hex,
+  settingsButton: {
+    alignItems: 'center',
+    borderRadius: 999,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
   },
   profileCard: {
-    alignItems: 'center',
-    backgroundColor: lightColors.card.hex,
-    borderColor: lightColors.border.hex,
-    borderRadius: theme.borderRadius.xl,
-    borderWidth: theme.borderWidth.hairline,
-    flexDirection: 'row',
-    gap: theme.spacing[4],
-    padding: theme.spacing[5],
-    ...theme.shadow.card,
-  },
-  avatar: {
-    alignItems: 'center',
     backgroundColor: lightColors.primary.hex,
+    borderColor: lightColors.primary.hex,
+    gap: theme.spacing[5],
+    overflow: 'hidden',
+    padding: theme.spacing[5],
+  },
+  profileGlowTop: {
+    backgroundColor: lightColors.accent.hex,
     borderRadius: 999,
+    height: 160,
+    opacity: 0.14,
+    position: 'absolute',
+    right: -46,
+    top: -52,
+    width: 160,
+  },
+  profileGlowBottom: {
+    backgroundColor: lightColors.accent.hex,
+    borderRadius: 999,
+    bottom: 6,
+    height: 82,
+    opacity: 0.1,
+    position: 'absolute',
+    right: 38,
+    width: 82,
+  },
+  profileRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing[3],
+  },
+  profileAvatar: {
+    alignItems: 'center',
+    backgroundColor: lightColors.accent.hex,
+    borderColor: 'rgba(252,250,244,0.22)',
+    borderRadius: 999,
+    borderWidth: 2,
     height: 56,
     justifyContent: 'center',
     width: 56,
   },
-  avatarText: {
-    color: lightColors.primaryForeground.hex,
+  profileAvatarText: {
+    color: lightColors.accentForeground.hex,
+    fontFamily: theme.typography.fontFamily.display,
+    fontSize: 18,
+    fontWeight: theme.typography.fontWeight.bold,
   },
-  profileTextWrap: {
+  nameRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing[2],
+  },
+  profileName: {
+    color: lightColors.primaryForeground.hex,
+    fontFamily: theme.typography.fontFamily.display,
+    fontSize: 18,
+    fontWeight: theme.typography.fontWeight.bold,
+    maxWidth: '72%',
+  },
+  profileContact: {
+    color: 'rgba(252,250,244,0.82)',
+    fontFamily: theme.typography.fontFamily.body,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  profileMeta: {
+    color: 'rgba(252,250,244,0.62)',
+    fontFamily: theme.typography.fontFamily.body,
+    fontSize: 11,
+    marginTop: theme.spacing[1],
+  },
+  profileEditButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(252,250,244,0.1)',
+    borderRadius: 999,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
+  profileStats: {
+    backgroundColor: 'rgba(252,250,244,0.1)',
+    borderRadius: theme.borderRadius.md,
+    flexDirection: 'row',
+    padding: theme.spacing[3],
+  },
+  metricItem: {
+    alignItems: 'center',
     flex: 1,
-    gap: theme.spacing[1],
+  },
+  metricLabel: {
+    color: 'rgba(252,250,244,0.72)',
+    fontFamily: theme.typography.fontFamily.body,
+    fontSize: 10,
+  },
+  metricValue: {
+    color: lightColors.primaryForeground.hex,
+    fontFamily: theme.typography.fontFamily.display,
+    fontSize: 16,
+    fontWeight: theme.typography.fontWeight.bold,
+    marginTop: 2,
+  },
+  metricDivider: {
+    backgroundColor: 'rgba(252,250,244,0.16)',
+    width: 1,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    padding: theme.spacing[3],
+  },
+  statItem: {
+    alignItems: 'center',
+    borderRadius: theme.borderRadius.md,
+    flex: 1,
+    paddingVertical: theme.spacing[2],
+  },
+  statValue: {
+    color: lightColors.foreground.hex,
+    fontFamily: theme.typography.fontFamily.display,
+    fontSize: 16,
+    fontWeight: theme.typography.fontWeight.bold,
+    marginTop: theme.spacing[1],
+  },
+  statLabel: {
+    color: lightColors.mutedForeground.hex,
+    fontFamily: theme.typography.fontFamily.body,
+    fontSize: 10,
+  },
+  linkText: {
+    color: lightColors.primary.hex,
+    fontFamily: theme.typography.fontFamily.body,
+    fontSize: 12,
+    fontWeight: theme.typography.fontWeight.semibold,
+  },
+  racketList: {
+    gap: theme.spacing[2],
+  },
+  racketCard: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing[3],
+    padding: theme.spacing[3],
+  },
+  racketTitle: {
+    color: lightColors.foreground.hex,
+    flexShrink: 1,
+    fontFamily: theme.typography.fontFamily.body,
+    fontSize: 14,
+    fontWeight: theme.typography.fontWeight.semibold,
+  },
+  mutedText: {
+    color: lightColors.mutedForeground.hex,
+    fontFamily: theme.typography.fontFamily.body,
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 2,
+  },
+  metaText: {
+    color: lightColors.mutedForeground.hex,
+    fontFamily: theme.typography.fontFamily.body,
+    fontSize: 10,
+    marginTop: 2,
+  },
+  menuSection: {
+    gap: theme.spacing[5],
+    paddingHorizontal: theme.spacing[5],
+  },
+  menuGroup: {
+    gap: theme.spacing[2],
+  },
+  menuGroupTitle: {
+    color: lightColors.mutedForeground.hex,
+    fontFamily: theme.typography.fontFamily.body,
+    fontSize: 11,
+    fontWeight: theme.typography.fontWeight.semibold,
+    letterSpacing: 0,
+    paddingHorizontal: theme.spacing[1],
+  },
+  menuCard: {
+    overflow: 'hidden',
+    padding: 0,
+  },
+  menuItem: {
+    gap: theme.spacing[3],
+    minHeight: 56,
+    paddingHorizontal: theme.spacing[4],
+    paddingVertical: theme.spacing[3],
+  },
+  menuItemDivider: {
+    borderBottomColor: lightColors.border.hex,
+    borderBottomWidth: theme.borderWidth.hairline,
+  },
+  menuLabel: {
+    color: lightColors.foreground.hex,
+    flex: 1,
+    fontFamily: theme.typography.fontFamily.body,
+    fontSize: 14,
+  },
+  footer: {
+    alignItems: 'center',
+    gap: theme.spacing[3],
+    paddingHorizontal: theme.spacing[5],
+    paddingTop: theme.spacing[2],
+  },
+  footerText: {
+    color: lightColors.mutedForeground.hex,
+    fontFamily: theme.typography.fontFamily.body,
+    fontSize: 11,
   },
   errorText: {
     color: lightColors.destructive.hex,
+    fontFamily: theme.typography.fontFamily.body,
+    fontSize: 12,
+    paddingHorizontal: theme.spacing[5],
   },
   successText: {
     color: lightColors.primary.hex,
+    fontFamily: theme.typography.fontFamily.body,
+    fontSize: 12,
+    paddingHorizontal: theme.spacing[5],
   },
-  section: {
-    gap: theme.spacing[3],
-  },
-  sectionHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  menuList: {
-    borderColor: lightColors.border.hex,
-    borderRadius: theme.borderRadius.lg,
-    borderWidth: theme.borderWidth.hairline,
-    overflow: 'hidden',
-  },
-  menuItem: {
-    alignItems: 'center',
-    backgroundColor: lightColors.card.hex,
-    borderBottomColor: lightColors.border.hex,
-    borderBottomWidth: theme.borderWidth.hairline,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    minHeight: 48,
-    paddingHorizontal: theme.spacing[4],
-  },
-  menuChevron: {
-    color: lightColors.mutedForeground.hex,
+  flex: {
+    flex: 1,
+    minWidth: 0,
   },
   pressed: {
     opacity: theme.opacity.pressed,

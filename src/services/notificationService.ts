@@ -1,5 +1,4 @@
 import Constants from 'expo-constants';
-import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -12,27 +11,87 @@ import type {
 } from '@/types/database';
 
 type NotificationClient = Pick<SupabaseClient<Database>, 'from' | 'rpc'>;
+type ExpoNotificationsModule = typeof import('expo-notifications');
+
+declare const require: (moduleName: string) => unknown;
 
 /** opt-in 다이얼로그를 통해 사용자가 알림을 허용했는지 여부를 나타내는 키 */
 const NOTIFICATION_OPT_IN_KEY = 'yellowball_notification_opt_in';
+let optInFallbackValue: string | null = null;
+
+export type NotificationOptInStatus = boolean | null;
+
+type LocalStorageLike = {
+  getItem: (key: string) => string | null;
+  setItem: (key: string, value: string) => void;
+};
+
+const getLocalStorage = (): LocalStorageLike | null => {
+  const storage = (globalThis as typeof globalThis & {
+    localStorage?: LocalStorageLike;
+  }).localStorage;
+
+  return storage ?? null;
+};
+
+const readStoredOptInValue = async (): Promise<string | null> => {
+  try {
+    const secureValue = await SecureStore.getItemAsync(NOTIFICATION_OPT_IN_KEY);
+
+    if (secureValue !== null) {
+      return secureValue;
+    }
+  } catch {
+    // SecureStore를 사용할 수 없는 환경에서는 아래 대체 저장소를 확인합니다.
+  }
+
+  try {
+    return getLocalStorage()?.getItem(NOTIFICATION_OPT_IN_KEY) ?? optInFallbackValue;
+  } catch {
+    return optInFallbackValue;
+  }
+};
+
+const writeStoredOptInValue = async (value: string): Promise<void> => {
+  optInFallbackValue = value;
+
+  try {
+    await SecureStore.setItemAsync(NOTIFICATION_OPT_IN_KEY, value);
+    return;
+  } catch {
+    // SecureStore 저장 실패 시에도 같은 세션과 웹 환경에서는 선택을 유지합니다.
+  }
+
+  try {
+    getLocalStorage()?.setItem(NOTIFICATION_OPT_IN_KEY, value);
+  } catch {
+    // 대체 저장소까지 실패하면 메모리 fallback만 유지합니다.
+  }
+};
+
+export const getNotificationOptInStatus =
+  async (): Promise<NotificationOptInStatus> => {
+    const value = await readStoredOptInValue();
+
+    if (value === 'true') {
+      return true;
+    }
+
+    if (value === 'false') {
+      return false;
+    }
+
+    return null;
+  };
 
 /** opt-in 여부 확인 */
 export const hasNotificationOptIn = async (): Promise<boolean> => {
-  try {
-    const value = await SecureStore.getItemAsync(NOTIFICATION_OPT_IN_KEY);
-    return value === 'true';
-  } catch {
-    return false;
-  }
+  return (await getNotificationOptInStatus()) === true;
 };
 
 /** opt-in 상태 저장 */
 export const setNotificationOptIn = async (allowed: boolean): Promise<void> => {
-  try {
-    await SecureStore.setItemAsync(NOTIFICATION_OPT_IN_KEY, String(allowed));
-  } catch {
-    // 저장 실패 시 무시 (다음 진입 시 다시 묻기)
-  }
+  await writeStoredOptInValue(String(allowed));
 };
 
 const toServiceError = (message: string, error: unknown) => {
@@ -48,6 +107,17 @@ const toServiceError = (message: string, error: unknown) => {
   return new Error(message);
 };
 
+const isExpoGoAndroid = () =>
+  Platform.OS === 'android' && Constants.appOwnership === 'expo';
+
+const getExpoNotifications = async (): Promise<ExpoNotificationsModule | null> => {
+  if (isExpoGoAndroid()) {
+    return null;
+  }
+
+  return require('expo-notifications') as ExpoNotificationsModule;
+};
+
 export const createNotificationService = (client: NotificationClient) => ({
   async registerPushToken(userId: string): Promise<string | null> {
     if (Platform.OS === 'web') {
@@ -57,6 +127,11 @@ export const createNotificationService = (client: NotificationClient) => ({
     // opt-in 다이얼로그에서 사용자가 동의하지 않았으면 등록 생략
     const optedIn = await hasNotificationOptIn();
     if (!optedIn) {
+      return null;
+    }
+
+    const Notifications = await getExpoNotifications();
+    if (!Notifications) {
       return null;
     }
 

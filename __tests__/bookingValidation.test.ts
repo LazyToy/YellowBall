@@ -26,6 +26,12 @@ describe('bookingValidation', () => {
     expect(() => assertProfileCanBook('suspended')).toThrow(
       '제재된 사용자는 예약할 수 없습니다.',
     );
+    expect(() => assertProfileCanBook('deleted_pending')).toThrow(
+      '탈퇴 처리 중인 사용자는 예약할 수 없습니다.',
+    );
+    expect(() => assertProfileCanBook('deleted')).toThrow(
+      '탈퇴가 완료된 사용자는 예약할 수 없습니다.',
+    );
   });
 
   test('슬롯 가용성과 시타 반납 시간을 검증한다', () => {

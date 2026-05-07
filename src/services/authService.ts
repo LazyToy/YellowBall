@@ -1,5 +1,6 @@
 import type {
   AuthChangeEvent,
+  Provider,
   Session,
   SupabaseClient,
   User,
@@ -21,15 +22,34 @@ export type SignInResult = {
   error: Error | null;
 };
 
+export type SocialAuthProvider = Extract<Provider, 'google' | 'kakao'>;
+
+type OAuthBrowserResult = {
+  type: string;
+  url?: string;
+};
+
+type OAuthDependencies = {
+  getRedirectUrl?: (provider: SocialAuthProvider) => Promise<string> | string;
+  openAuthSession?: (
+    authUrl: string,
+    redirectUrl: string,
+  ) => Promise<OAuthBrowserResult | null | undefined>;
+};
+
 export interface AuthService {
   signUp: (
-    phone: string,
+    email: string,
     password: string,
     username: string,
     nickname: string,
   ) => Promise<unknown>;
+  checkEmailAvailable: (email: string) => Promise<boolean>;
   checkUsernameAvailable: (username: string) => Promise<boolean>;
-  signIn: (phone: string, password: string) => Promise<SignInResult>;
+  signIn: (email: string, password: string) => Promise<SignInResult>;
+  signInWithOAuthProvider: (
+    provider: SocialAuthProvider,
+  ) => Promise<SignInResult>;
   signOut: () => Promise<void>;
   getSession: () => Promise<Session | null>;
   requestAccountDeletion: (
@@ -67,10 +87,34 @@ const toSignInError = (error: unknown) => {
     typeof error.message === 'string' &&
     /invalid login credentials/i.test(error.message)
   ) {
-    return new Error('전화번호 또는 비밀번호가 올바르지 않습니다.');
+    return new Error('이메일 또는 비밀번호가 올바르지 않습니다.');
   }
 
   return new Error(toErrorMessage('로그인에 실패했습니다.', error));
+};
+
+const toOAuthError = (provider: SocialAuthProvider, error: unknown) => {
+  const providerLabel = provider === 'google' ? 'Google' : '카카오';
+
+  return new Error(toErrorMessage(`${providerLabel} 로그인에 실패했습니다.`, error));
+};
+
+const toSignUpError = (error: unknown) => {
+  const message =
+    typeof error === 'object' &&
+    error !== null &&
+    'message' in error &&
+    typeof error.message === 'string'
+      ? error.message
+      : error instanceof Error
+        ? error.message
+        : '';
+
+  if (/already registered|already exists|already been registered|duplicate/i.test(message)) {
+    return new Error('이미 가입된 이메일입니다.');
+  }
+
+  return new Error(toErrorMessage('회원가입에 실패했습니다.', error));
 };
 
 const getBlockedAccountError = (profile: Profile) => {
@@ -80,6 +124,10 @@ const getBlockedAccountError = (profile: Profile) => {
 
   if (profile.status === 'deleted_pending') {
     return new Error('탈퇴 처리 중인 계정입니다.');
+  }
+
+  if (profile.status === 'deleted') {
+    return new Error('탈퇴가 완료된 계정입니다.');
   }
 
   return null;
@@ -99,17 +147,72 @@ const fetchProfile = async (client: AuthClient, userId: string) => {
   return data;
 };
 
+const getOAuthRedirectUrl = async (
+  provider: SocialAuthProvider,
+  oauthDependencies: OAuthDependencies,
+) => {
+  if (oauthDependencies.getRedirectUrl) {
+    return oauthDependencies.getRedirectUrl(provider);
+  }
+
+  if (process.env.EXPO_PUBLIC_AUTH_REDIRECT_URL) {
+    return process.env.EXPO_PUBLIC_AUTH_REDIRECT_URL;
+  }
+
+  const Linking = await import('expo-linking');
+
+  return Linking.createURL('auth/callback');
+};
+
+const openOAuthSession = async (
+  authUrl: string,
+  redirectUrl: string,
+  oauthDependencies: OAuthDependencies,
+) => {
+  if (oauthDependencies.openAuthSession) {
+    return oauthDependencies.openAuthSession(authUrl, redirectUrl);
+  }
+
+  const WebBrowser = await import('expo-web-browser');
+
+  WebBrowser.maybeCompleteAuthSession();
+
+  return WebBrowser.openAuthSessionAsync(authUrl, redirectUrl, {
+    showInRecents: true,
+  });
+};
+
+const parseOAuthCallbackUrl = (callbackUrl: string) => {
+  const parsedUrl = new URL(callbackUrl);
+  const params = new URLSearchParams(parsedUrl.search);
+
+  if (parsedUrl.hash) {
+    const hashParams = new URLSearchParams(parsedUrl.hash.slice(1));
+    hashParams.forEach((value, key) => {
+      params.set(key, value);
+    });
+  }
+
+  return {
+    access_token: params.get('access_token'),
+    refresh_token: params.get('refresh_token'),
+    code: params.get('code'),
+    error: params.get('error_description') ?? params.get('error'),
+  };
+};
+
 export const createAuthService = (
   client: RpcAuthClient,
   storage: SessionStorage = {
     removeItem: async () => undefined,
     storageKey: AUTH_SESSION_STORAGE_KEY,
   },
+  oauthDependencies: OAuthDependencies = {},
 ): AuthService => ({
-  async signUp(phone, password, username, nickname) {
+  async signUp(email, password, username, nickname) {
     try {
       const { data, error } = await client.auth.signUp({
-        phone,
+        email,
         password,
         options: {
           data: {
@@ -120,7 +223,7 @@ export const createAuthService = (
       });
 
       if (error) {
-        throw new Error(toErrorMessage('회원가입에 실패했습니다.', error));
+        throw toSignUpError(error);
       }
 
       return data;
@@ -129,7 +232,31 @@ export const createAuthService = (
         throw error;
       }
 
-      throw new Error(toErrorMessage('회원가입에 실패했습니다.', error));
+      throw toSignUpError(error);
+    }
+  },
+
+  async checkEmailAvailable(email) {
+    try {
+      const { data, error } = await client.functions.invoke('check-email', {
+        body: { email },
+      });
+
+      if (error) {
+        throw new Error(
+          toErrorMessage('이메일 중복 확인에 실패했습니다.', error),
+        );
+      }
+
+      return Boolean((data as { available?: boolean } | null)?.available);
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+
+      throw new Error(
+        toErrorMessage('이메일 중복 확인에 실패했습니다.', error),
+      );
     }
   },
 
@@ -157,10 +284,10 @@ export const createAuthService = (
     }
   },
 
-  async signIn(phone, password) {
+  async signIn(email, password) {
     try {
       const { data, error } = await client.auth.signInWithPassword({
-        phone,
+        email,
         password,
       });
 
@@ -208,6 +335,120 @@ export const createAuthService = (
     }
   },
 
+  async signInWithOAuthProvider(provider) {
+    try {
+      const redirectUrl = await getOAuthRedirectUrl(provider, oauthDependencies);
+      const { data, error } = await client.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: redirectUrl,
+          skipBrowserRedirect: true,
+          queryParams:
+            provider === 'google'
+              ? {
+                  prompt: 'select_account',
+                }
+              : undefined,
+        },
+      });
+
+      if (error) {
+        return {
+          session: null,
+          user: null,
+          error: toOAuthError(provider, error),
+        };
+      }
+
+      if (!data.url) {
+        return {
+          session: null,
+          user: null,
+          error: new Error('OAuth 인증 주소를 만들지 못했습니다.'),
+        };
+      }
+
+      const browserResult = await openOAuthSession(
+        data.url,
+        redirectUrl,
+        oauthDependencies,
+      );
+
+      if (browserResult?.type !== 'success' || !browserResult.url) {
+        return {
+          session: null,
+          user: null,
+          error: new Error('로그인이 취소되었습니다.'),
+        };
+      }
+
+      const callbackParams = parseOAuthCallbackUrl(browserResult.url);
+
+      if (callbackParams.error) {
+        return {
+          session: null,
+          user: null,
+          error: new Error(callbackParams.error),
+        };
+      }
+
+      const authResult =
+        callbackParams.access_token && callbackParams.refresh_token
+          ? await client.auth.setSession({
+              access_token: callbackParams.access_token,
+              refresh_token: callbackParams.refresh_token,
+            })
+          : callbackParams.code
+            ? await client.auth.exchangeCodeForSession(callbackParams.code)
+            : {
+                data: { session: null, user: null },
+                error: new Error('OAuth 콜백에서 세션 정보를 찾지 못했습니다.'),
+              };
+
+      if (authResult.error) {
+        return {
+          session: null,
+          user: null,
+          error: toOAuthError(provider, authResult.error),
+        };
+      }
+
+      if (!authResult.data.session || !authResult.data.user) {
+        return {
+          session: null,
+          user: null,
+          error: new Error('로그인 세션을 만들지 못했습니다.'),
+        };
+      }
+
+      const profile = await fetchProfile(client, authResult.data.user.id);
+      const blockedError = getBlockedAccountError(profile);
+
+      if (blockedError) {
+        await client.auth.signOut();
+        await storage.removeItem(storage.storageKey ?? AUTH_SESSION_STORAGE_KEY);
+
+        return {
+          session: null,
+          user: null,
+          error: blockedError,
+        };
+      }
+
+      return {
+        session: authResult.data.session,
+        user: authResult.data.user,
+        error: null,
+      };
+    } catch (error) {
+      return {
+        session: null,
+        user: null,
+        error: toOAuthError(provider, error),
+      };
+    }
+  },
+
   async signOut() {
     const { error } = await client.auth.signOut();
 
@@ -237,10 +478,17 @@ export const createAuthService = (
       throw new Error('최고 관리자는 탈퇴할 수 없습니다.');
     }
 
-    const verification = await client.auth.signInWithPassword({
-      phone: profile.phone,
-      password,
-    });
+    const credentials = profile.email
+      ? { email: profile.email, password }
+      : profile.phone
+        ? { phone: profile.phone, password }
+        : null;
+
+    if (!credentials) {
+      throw new Error('비밀번호로 다시 인증할 수 없는 계정입니다.');
+    }
+
+    const verification = await client.auth.signInWithPassword(credentials);
 
     if (verification.error || verification.data.user?.id !== userId) {
       throw new Error('비밀번호를 다시 확인해 주세요.');
@@ -274,13 +522,18 @@ const getDefaultAuthService = async (): Promise<AuthService> => {
 };
 
 export const signUp = (
-  phone: string,
+  email: string,
   password: string,
   username: string,
   nickname: string,
 ) =>
   getDefaultAuthService().then((service) =>
-    service.signUp(phone, password, username, nickname),
+    service.signUp(email, password, username, nickname),
+  );
+
+export const checkEmailAvailable = (email: string) =>
+  getDefaultAuthService().then((service) =>
+    service.checkEmailAvailable(email),
   );
 
 export const checkUsernameAvailable = (username: string) =>
@@ -288,8 +541,13 @@ export const checkUsernameAvailable = (username: string) =>
     service.checkUsernameAvailable(username),
   );
 
-export const signIn = (phone: string, password: string) =>
-  getDefaultAuthService().then((service) => service.signIn(phone, password));
+export const signIn = (email: string, password: string) =>
+  getDefaultAuthService().then((service) => service.signIn(email, password));
+
+export const signInWithOAuthProvider = (provider: SocialAuthProvider) =>
+  getDefaultAuthService().then((service) =>
+    service.signInWithOAuthProvider(provider),
+  );
 
 export const signOut = () =>
   getDefaultAuthService().then((service) => service.signOut());

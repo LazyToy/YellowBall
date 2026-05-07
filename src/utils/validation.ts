@@ -14,6 +14,23 @@ export const validatePhone = (phone: string): ValidationResult => {
   return invalid('휴대폰 번호는 010-1234-5678 형식으로 입력해 주세요.');
 };
 
+export const validateEmail = (
+  email: string,
+  isDuplicated = false,
+): ValidationResult => {
+  const normalizedEmail = email.trim();
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    return invalid('이메일 주소를 올바른 형식으로 입력해 주세요.');
+  }
+
+  if (isDuplicated) {
+    return invalid('이미 가입된 이메일입니다.');
+  }
+
+  return valid();
+};
+
 export const validatePassword = (password: string): ValidationResult => {
   const hasLetter = /[A-Za-z]/.test(password);
   const hasNumber = /\d/.test(password);

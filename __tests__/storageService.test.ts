@@ -1,6 +1,38 @@
-import { createStorageService } from '../src/services/storageService';
+import {
+  createStorageService,
+  getPublicStorageUrl,
+  getStringPhotoUrl,
+} from '../src/services/storageService';
 
 describe('storageService', () => {
+  const originalSupabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+
+  beforeEach(() => {
+    process.env.EXPO_PUBLIC_SUPABASE_URL = 'https://yellowball.supabase.co';
+  });
+
+  afterAll(() => {
+    process.env.EXPO_PUBLIC_SUPABASE_URL = originalSupabaseUrl;
+  });
+
+  test('getPublicStorageUrl converts object paths to public Storage URLs', () => {
+    expect(getStringPhotoUrl('seed/hyper-g.png')).toBe(
+      'https://yellowball.supabase.co/storage/v1/object/public/string-photos/seed/hyper-g.png',
+    );
+    expect(getPublicStorageUrl('app-assets', 'app-assets/seed/racket.png')).toBe(
+      'https://yellowball.supabase.co/storage/v1/object/public/app-assets/seed/racket.png',
+    );
+    expect(getStringPhotoUrl('app-assets/seed/hyper-g.png')).toBe(
+      'https://yellowball.supabase.co/storage/v1/object/public/app-assets/seed/hyper-g.png',
+    );
+  });
+
+  test('getPublicStorageUrl leaves existing URLs unchanged', () => {
+    expect(getStringPhotoUrl('https://cdn.example.com/string.png')).toBe(
+      'https://cdn.example.com/string.png',
+    );
+  });
+
   test('uploadRacketPhoto는 racket-photos 버킷에 업로드하고 public URL을 반환한다', async () => {
     const upload = jest
       .fn()

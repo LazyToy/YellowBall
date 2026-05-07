@@ -42,6 +42,9 @@ describe('Wave 13 RLS security hardening', () => {
     await expect(parse(readMigration('021_admin_storage_photo_policies.sql'))).resolves.toBeTruthy();
     await expect(parse(readMigration('022_user_suspension_transaction.sql'))).resolves.toBeTruthy();
     await expect(parse(readMigration('023_booking_helper_execute_hardening.sql'))).resolves.toBeTruthy();
+    await expect(parse(readMigration('024_account_deletion_cleanup.sql'))).resolves.toBeTruthy();
+    await expect(parse(readMigration('025_revoke_anon_execute_rpcs.sql'))).resolves.toBeTruthy();
+    await expect(parse(readMigration('026_schedule_account_cleanup_cron.sql'))).resolves.toBeTruthy();
     await expect(parse(readFile('supabase/tests/rls_tests.sql'))).resolves.toBeTruthy();
   });
 
@@ -108,6 +111,40 @@ describe('Wave 13 RLS security hardening', () => {
 
     expect(sql).toContain('REVOKE ALL ON FUNCTION public.can_manage_bookings(UUID)');
     expect(sql).toContain('FROM PUBLIC, anon, authenticated');
+  });
+
+  test('account deletion cleanup anonymizes retained booking dependencies', () => {
+    const sql = readMigration('024_account_deletion_cleanup.sql');
+
+    expect(sql).toContain("status = 'deleted'");
+    expect(sql).toContain("CHECK (status IN ('active', 'suspended', 'deleted_pending', 'deleted'))");
+    expect(sql).toContain('UPDATE service_bookings');
+    expect(sql).toContain('address_id = NULL');
+    expect(sql).toContain('UPDATE demo_bookings');
+    expect(sql).toContain('UPDATE user_rackets');
+    expect(sql).toContain("photo_url = NULL");
+    expect(sql).toContain('DELETE FROM storage.objects');
+    expect(sql).not.toContain('DELETE FROM user_rackets');
+  });
+
+  test('SECURITY DEFINER RPCs revoke implicit PUBLIC execute and restore authenticated grants', () => {
+    const sql = readMigration('025_revoke_anon_execute_rpcs.sql');
+
+    expect(sql).toContain('FROM PUBLIC, anon');
+    expect(sql).toContain('GRANT EXECUTE ON FUNCTION create_service_booking_transaction');
+    expect(sql).toContain('GRANT EXECUTE ON FUNCTION request_profile_account_deletion(UUID) TO authenticated');
+    expect(sql).toContain('GRANT EXECUTE ON FUNCTION has_admin_role(UUID) TO authenticated');
+    expect(sql).toContain('REVOKE ALL ON FUNCTION cleanup_deleted_accounts() FROM PUBLIC, anon, authenticated');
+  });
+
+  test('account deletion cleanup is scheduled through pg_cron', () => {
+    const sql = readMigration('026_schedule_account_cleanup_cron.sql');
+
+    expect(sql).toContain('CREATE EXTENSION IF NOT EXISTS pg_cron');
+    expect(sql).toContain("cron.unschedule('cleanup-deleted-accounts')");
+    expect(sql).toContain("cron.schedule(");
+    expect(sql).toContain("'0 3 * * *'");
+    expect(sql).toContain("'SELECT cleanup_deleted_accounts()'");
   });
 
   test('admin-managed public photo buckets have explicit upload policies', () => {

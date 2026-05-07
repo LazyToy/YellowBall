@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'expo-router';
 import {
   Image,
   Pressable,
-  ScrollView,
   StyleSheet,
   View,
 } from 'react-native';
@@ -10,14 +10,19 @@ import {
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
+import { BackButton } from '@/components/MobileUI';
+import { RefreshableScrollView } from '@/components/PageRefresh';
 import { Typography } from '@/components/Typography';
 import { lightColors, theme } from '@/constants/theme';
+import { useResetOnBlur } from '@/hooks/useResetOnBlur';
 import {
   getActiveStrings,
   getStringById,
   type StringCatalogFilters,
 } from '@/services/stringCatalogService';
+import { getStringPhotoUrl } from '@/services/storageService';
 import type { StringCatalogItem } from '@/types/database';
+import { goBackOrReplace } from '@/utils/navigation';
 
 type FilterKey = 'brand' | 'gauge' | 'recommendedStyle';
 
@@ -37,6 +42,7 @@ const formatPrice = (price: number | null) =>
   price === null ? 'Price not set' : `KRW ${price.toLocaleString()}`;
 
 export default function StringCatalogScreen() {
+  const router = useRouter();
   const [allStrings, setAllStrings] = useState<StringCatalogItem[]>([]);
   const [strings, setStrings] = useState<StringCatalogItem[]>([]);
   const [selectedString, setSelectedString] = useState<StringCatalogItem | null>(
@@ -130,23 +136,37 @@ export default function StringCatalogScreen() {
     try {
       setMessage(undefined);
       setSelectedString(await getStringById(id));
+      router.push({
+        pathname: '/string-detail',
+        params: { from: '/string-catalog', id },
+      });
     } catch {
       setMessage('This string is no longer available.');
     }
   };
 
-  const clearFilters = () => {
+  const clearFilters = useCallback(() => {
     setSearch('');
     setBrand('');
     setGauge('');
     setRecommendedStyle('');
     setSelectedString(null);
-  };
+  }, []);
+
+  const resetForm = useCallback(() => {
+    clearFilters();
+    setMessage(undefined);
+  }, [clearFilters]);
+
+  useResetOnBlur(resetForm);
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <RefreshableScrollView contentContainerStyle={styles.container}>
       <View style={styles.header}>
-        <Typography variant="h1">String Catalog</Typography>
+        <View style={styles.titleRow}>
+          <BackButton onPress={() => goBackOrReplace(router, '/shop')} />
+          <Typography variant="h1">String Catalog</Typography>
+        </View>
         <Typography variant="body" style={styles.description}>
           Browse active strings by brand, gauge, and playing style.
         </Typography>
@@ -232,6 +252,16 @@ export default function StringCatalogScreen() {
             <Typography variant="body" style={styles.price}>
               {formatPrice(item.price)}
             </Typography>
+            {item.image_url ? (
+              <Image
+                accessibilityLabel={`${item.brand} ${item.name}`}
+                resizeMode="cover"
+                source={{
+                  uri: getStringPhotoUrl(item.image_url) ?? item.image_url,
+                }}
+                style={styles.cardImage}
+              />
+            ) : null}
             {item.description ? (
               <Typography variant="caption" numberOfLines={2}>
                 {item.description}
@@ -240,7 +270,7 @@ export default function StringCatalogScreen() {
           </Pressable>
         ))}
       </View>
-    </ScrollView>
+    </RefreshableScrollView>
   );
 }
 
@@ -311,7 +341,7 @@ function StringDetail({ item }: { item: StringCatalogItem }) {
         <Image
           accessibilityLabel={`${item.brand} ${item.name}`}
           resizeMode="cover"
-          source={{ uri: item.image_url }}
+          source={{ uri: getStringPhotoUrl(item.image_url) ?? item.image_url }}
           style={styles.image}
         />
       ) : null}
@@ -346,6 +376,11 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing[12],
   },
   header: {
+    gap: theme.spacing[2],
+  },
+  titleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
     gap: theme.spacing[2],
   },
   description: {
@@ -416,6 +451,12 @@ const styles = StyleSheet.create({
     backgroundColor: lightColors.muted.hex,
     borderRadius: theme.borderRadius.md,
     height: 180,
+    width: '100%',
+  },
+  cardImage: {
+    backgroundColor: lightColors.muted.hex,
+    borderRadius: theme.borderRadius.md,
+    height: 132,
     width: '100%',
   },
   metaGrid: {

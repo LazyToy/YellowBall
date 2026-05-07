@@ -17,6 +17,7 @@
   "exclude": [
     "node_modules",
     "YellowBall_v0.1",
+    "apps/admin-web",
     "__tests__"
   ]
 }

@@ -6,23 +6,73 @@ import type {
 
 export type BookingStatusGroup = 'active' | 'completed' | 'cancelled';
 
+export type ServiceBookingWorkStatus =
+  | 'requested'
+  | 'approved'
+  | 'in_progress'
+  | 'completed';
+
+export const serviceBookingWorkStatuses: ServiceBookingWorkStatus[] = [
+  'requested',
+  'approved',
+  'in_progress',
+  'completed',
+];
+
+export const serviceBookingWorkStatusLabels: Record<
+  ServiceBookingWorkStatus,
+  string
+> = {
+  requested: '접수',
+  approved: '승인',
+  in_progress: '작업중',
+  completed: '완료',
+};
+
+export const getServiceBookingWorkStatus = (
+  status: ServiceBookingStatus,
+): ServiceBookingWorkStatus => {
+  if (
+    [
+      'completed',
+      'pickup_ready',
+      'delivered',
+      'done',
+      'refund_pending',
+      'refund_done',
+    ].includes(status)
+  ) {
+    return 'completed';
+  }
+
+  if (['racket_received', 'in_progress'].includes(status)) {
+    return 'in_progress';
+  }
+
+  if (['approved', 'visit_pending'].includes(status)) {
+    return 'approved';
+  }
+
+  return 'requested';
+};
+
 export const serviceBookingStatusLabels: Record<ServiceBookingStatus, string> = {
   requested: '접수',
   approved: '승인',
-  visit_pending: '방문 대기',
-  racket_received: '라켓 입고',
+  visit_pending: '승인',
+  racket_received: '작업중',
   in_progress: '작업중',
-  completed: '작업 완료',
-  pickup_ready: '픽업 가능',
-  delivered: '배송 완료',
+  completed: '완료',
+  pickup_ready: '완료',
+  delivered: '완료',
   done: '완료',
-  cancelled_user: '사용자 취소',
-  cancelled_admin: '관리자 취소',
-  rejected: '거절',
-  reschedule_requested: '일정 변경',
-  no_show: '노쇼',
-  refund_pending: '환불 대기',
-  refund_done: '환불 완료',
+  cancelled_user: '접수',
+  cancelled_admin: '접수',
+  rejected: '접수',
+  reschedule_requested: '접수',
+  no_show: '접수',
+  refund_pending: '완료',
+  refund_done: '완료',
 };
 
 export const demoBookingStatusLabels: Record<DemoBookingStatus, string> = {
@@ -37,34 +87,18 @@ export const demoBookingStatusLabels: Record<DemoBookingStatus, string> = {
   overdue: '반납 지연',
 };
 
-export const serviceBookingTimeline: ServiceBookingStatus[] = [
+export const serviceBookingTimeline: ServiceBookingWorkStatus[] = [
   'requested',
   'approved',
-  'visit_pending',
-  'racket_received',
   'in_progress',
   'completed',
-  'pickup_ready',
-  'done',
 ];
 
 export const serviceBookingStatusVariant = (
   status: ServiceBookingStatus,
 ): BadgeVariant => {
-  if (
-    ['done', 'delivered', 'pickup_ready', 'completed'].includes(status)
-  ) {
+  if (getServiceBookingWorkStatus(status) === 'completed') {
     return 'success';
-  }
-
-  if (
-    ['cancelled_user', 'cancelled_admin', 'rejected', 'no_show'].includes(status)
-  ) {
-    return 'destructive';
-  }
-
-  if (['reschedule_requested', 'refund_pending'].includes(status)) {
-    return 'warning';
   }
 
   return 'secondary';

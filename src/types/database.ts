@@ -7,20 +7,21 @@ export type Json =
   | Json[];
 
 export type ProfileRole = 'super_admin' | 'admin' | 'user';
-export type ProfileStatus = 'active' | 'suspended' | 'deleted_pending';
+export type ProfileStatus =
+  | 'active'
+  | 'suspended'
+  | 'deleted_pending'
+  | 'deleted';
 
 export type Profile = Database['public']['Tables']['profiles']['Row'];
-export type ProfileUpdate =
-  Database['public']['Tables']['profiles']['Update'];
+export type ProfileUpdate = Database['public']['Tables']['profiles']['Update'];
 export type NotificationPreference =
   Database['public']['Tables']['notification_preferences']['Row'];
 export type NotificationPreferenceUpdate =
   Database['public']['Tables']['notification_preferences']['Update'];
 export type Address = Database['public']['Tables']['addresses']['Row'];
-export type AddressInsert =
-  Database['public']['Tables']['addresses']['Insert'];
-export type AddressUpdate =
-  Database['public']['Tables']['addresses']['Update'];
+export type AddressInsert = Database['public']['Tables']['addresses']['Insert'];
+export type AddressUpdate = Database['public']['Tables']['addresses']['Update'];
 export type UserRacket = Database['public']['Tables']['user_rackets']['Row'];
 export type UserRacketInsert =
   Database['public']['Tables']['user_rackets']['Insert'];
@@ -65,8 +66,7 @@ export type DemoRacketStatus =
   | 'damaged'
   | 'sold'
   | 'hidden';
-export type BookingSlot =
-  Database['public']['Tables']['booking_slots']['Row'];
+export type BookingSlot = Database['public']['Tables']['booking_slots']['Row'];
 export type BookingSlotInsert =
   Database['public']['Tables']['booking_slots']['Insert'];
 export type BookingSlotUpdate =
@@ -96,8 +96,7 @@ export type ServiceBookingStatus =
   | 'refund_pending'
   | 'refund_done';
 export type ServiceDeliveryMethod = 'store_pickup' | 'local_quick' | 'parcel';
-export type DemoBooking =
-  Database['public']['Tables']['demo_bookings']['Row'];
+export type DemoBooking = Database['public']['Tables']['demo_bookings']['Row'];
 export type DemoBookingInsert =
   Database['public']['Tables']['demo_bookings']['Insert'];
 export type DemoBookingUpdate =
@@ -120,16 +119,158 @@ export type RacketConditionCheckInsert =
 export type RacketConditionCheckUpdate =
   Database['public']['Tables']['racket_condition_checks']['Update'];
 export type RacketConditionCheckType = 'before_rental' | 'after_return';
+export type AppContentBlock =
+  Database['public']['Tables']['app_content_blocks']['Row'];
+export type AppContentBlockInsert =
+  Database['public']['Tables']['app_content_blocks']['Insert'];
+export type AppContentBlockUpdate =
+  Database['public']['Tables']['app_content_blocks']['Update'];
+export type ShopProductRow =
+  Database['public']['Tables']['shop_products']['Row'];
+export type ShopProductInsert =
+  Database['public']['Tables']['shop_products']['Insert'];
+export type ShopProductUpdate =
+  Database['public']['Tables']['shop_products']['Update'];
+export type ShopOrderRow = Database['public']['Tables']['shop_orders']['Row'];
+export type ShopOrderInsert =
+  Database['public']['Tables']['shop_orders']['Insert'];
+export type ShopOrderUpdate =
+  Database['public']['Tables']['shop_orders']['Update'];
 
 export interface Database {
   public: {
     Tables: {
+      app_content_blocks: {
+        Row: {
+          key: string;
+          payload: Json;
+          description: string | null;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          key: string;
+          payload: Json;
+          description?: string | null;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          key?: string;
+          payload?: Json;
+          description?: string | null;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      shop_products: {
+        Row: {
+          id: string;
+          name: string;
+          category: string;
+          image_path: string | null;
+          image_url: string | null;
+          price: number;
+          sale_price: number;
+          rating_average: number;
+          review_count: number;
+          tag: string | null;
+          tone: 'primary' | 'accent' | 'secondary' | 'card';
+          stock_quantity: number;
+          sort_order: number;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          name: string;
+          category: string;
+          image_path?: string | null;
+          image_url?: string | null;
+          price: number;
+          sale_price: number;
+          rating_average?: number;
+          review_count?: number;
+          tag?: string | null;
+          tone?: 'primary' | 'accent' | 'secondary' | 'card';
+          stock_quantity?: number;
+          sort_order?: number;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          category?: string;
+          image_path?: string | null;
+          image_url?: string | null;
+          price?: number;
+          sale_price?: number;
+          rating_average?: number;
+          review_count?: number;
+          tag?: string | null;
+          tone?: 'primary' | 'accent' | 'secondary' | 'card';
+          stock_quantity?: number;
+          sort_order?: number;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      shop_orders: {
+        Row: {
+          id: string;
+          user_id: string;
+          order_number: string;
+          status: string;
+          total_amount: number;
+          items: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          order_number: string;
+          status?: string;
+          total_amount?: number;
+          items?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          order_number?: string;
+          status?: string;
+          total_amount?: number;
+          items?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'shop_orders_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       profiles: {
         Row: {
           id: string;
           username: string;
           nickname: string;
-          phone: string;
+          email: string | null;
+          phone: string | null;
           role: ProfileRole;
           status: ProfileStatus;
           expo_push_token: string | null;
@@ -140,7 +281,8 @@ export interface Database {
           id: string;
           username: string;
           nickname: string;
-          phone: string;
+          email?: string | null;
+          phone?: string | null;
           role?: ProfileRole;
           status?: ProfileStatus;
           expo_push_token?: string | null;
@@ -151,7 +293,8 @@ export interface Database {
           id?: string;
           username?: string;
           nickname?: string;
-          phone?: string;
+          email?: string | null;
+          phone?: string | null;
           role?: ProfileRole;
           status?: ProfileStatus;
           expo_push_token?: string | null;
@@ -951,6 +1094,15 @@ export interface Database {
           p_user_notes: string | null;
         };
         Returns: DemoBooking;
+      };
+      ensure_booking_slots_for_date: {
+        Args: {
+          p_date: string;
+          p_service_type: BookingServiceType;
+          p_duration_min: number;
+          p_capacity: number;
+        };
+        Returns: null;
       };
       admin_update_service_booking_status: {
         Args: {

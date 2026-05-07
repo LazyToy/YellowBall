@@ -51,7 +51,10 @@ const buildProfileUpdate = (data: EditableProfileFields): ProfileUpdate => {
   return updateData;
 };
 
-const updateAuthPhone = async (client: ProfileClient, phone?: string) => {
+const updateAuthPhone = async (
+  client: ProfileClient,
+  phone?: string | null,
+) => {
   if (!phone || !client.auth?.updateUser) {
     return;
   }
@@ -66,7 +69,7 @@ const updateAuthPhone = async (client: ProfileClient, phone?: string) => {
 const assertPhoneAvailable = async (
   client: ProfileClient,
   userId: string,
-  phone?: string,
+  phone?: string | null,
 ) => {
   if (!phone) {
     return;

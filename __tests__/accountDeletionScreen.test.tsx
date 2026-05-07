@@ -1,12 +1,11 @@
 import React from 'react';
-import { Alert } from 'react-native';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 
 const mockReplace = jest.fn();
 const mockRequestAccountDeletion = jest.fn();
 
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ replace: mockReplace }),
+  useRouter: () => ({ back: jest.fn(), replace: mockReplace }),
 }));
 
 jest.mock('../src/hooks/useAuth', () => ({
@@ -27,13 +26,6 @@ describe('AccountDeletionScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockRequestAccountDeletion.mockResolvedValue(undefined);
-    jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
-      buttons?.find((button) => button.text === '탈퇴')?.onPress?.();
-    });
-  });
-
-  afterEach(() => {
-    jest.restoreAllMocks();
   });
 
   test('확인 다이얼로그를 거친 뒤 탈퇴 요청을 처리한다', async () => {
@@ -47,11 +39,9 @@ describe('AccountDeletionScreen', () => {
     );
     fireEvent.press(screen.getByLabelText('계정 탈퇴 요청'));
 
-    expect(Alert.alert).toHaveBeenCalledWith(
-      '계정 탈퇴',
-      '정말 탈퇴하시겠습니까?',
-      expect.any(Array),
-    );
+    expect(screen.getByText('계정 탈퇴를 요청할까요?')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('탈퇴 요청'));
+
     await waitFor(() =>
       expect(mockRequestAccountDeletion).toHaveBeenCalledWith(
         'user-1',
@@ -59,6 +49,10 @@ describe('AccountDeletionScreen', () => {
         expect.objectContaining({ id: 'user-1' }),
       ),
     );
+    await waitFor(() =>
+      expect(screen.getByText('탈퇴 요청이 접수되었습니다')).toBeTruthy(),
+    );
+    fireEvent.press(screen.getByLabelText('알림 확인'));
     expect(mockReplace).toHaveBeenCalledWith('/(auth)/login');
   });
 });

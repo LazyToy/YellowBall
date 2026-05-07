@@ -41,7 +41,7 @@ describe('Supabase 클라이언트', () => {
     });
   });
 
-  test('환경 변수와 SecureStore adapter로 싱글톤 클라이언트를 생성한다', async () => {
+  test('환경 변수와 SecureStore adapter로 싱글톤 클라이언트를 생성하되 세션은 디스크에 보존하지 않는다', async () => {
     const { createClient } = require('@supabase/supabase-js');
     const SecureStore = require('expo-secure-store');
     const { secureStoreAdapter, supabase } = require('../src/services/supabase');
@@ -59,7 +59,7 @@ describe('Supabase 클라이언트', () => {
         auth: expect.objectContaining({
           autoRefreshToken: true,
           detectSessionInUrl: false,
-          persistSession: true,
+          persistSession: false,
           storage: secureStoreAdapter,
         }),
       }),

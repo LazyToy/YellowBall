@@ -1,11 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { Button } from '@/components/Button';
+import {
+  CalendarPicker,
+  DateTimeCalendarPicker,
+} from '@/components/CalendarPicker';
+import { FeedbackDialog } from '@/components/FeedbackDialog';
 import { Input } from '@/components/Input';
+import { BackButton } from '@/components/MobileUI';
+import { RefreshableScrollView } from '@/components/PageRefresh';
 import { Typography } from '@/components/Typography';
 import { lightColors, theme } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
+import { useAppMenuSettings } from '@/hooks/useAppMenuSettings';
+import { useResetOnBlur } from '@/hooks/useResetOnBlur';
+import { hasAnyBookingMenu } from '@/services/appMenuSettingsService';
 import {
   buildRebookPrefill,
   createBooking,
@@ -14,7 +25,14 @@ import {
 import { createDemoBooking } from '@/services/demoBookingService';
 import { getDemoRackets } from '@/services/demoRacketService';
 import { getRackets } from '@/services/racketService';
-import { getAvailableSlots } from '@/services/slotService';
+import {
+  defaultShopSchedule,
+  getClosedDates,
+  getSchedule,
+  type ClosedDate,
+  type ShopSchedule,
+} from '@/services/scheduleService';
+import { getBookingSlotsForDate } from '@/services/slotService';
 import { getActiveStrings } from '@/services/stringCatalogService';
 import { getAddresses } from '@/services/addressService';
 import type {
@@ -26,26 +44,95 @@ import type {
   StringCatalogItem,
   UserRacket,
 } from '@/types/database';
+import {
+  formatKstDateKey,
+  formatKstTime,
+  isPastIsoDateTime,
+} from '@/utils/kstDateTime';
+import {
+  getBusinessHoursLabel,
+  getCalendarDateStatus,
+} from '@/utils/bookingCalendarStatus';
 
 type BookingMode = 'stringing' | 'demo';
+type BookingStringRelation = {
+  brand?: string | null;
+  name?: string | null;
+};
+type RebookCandidate = ServiceBooking & {
+  main_string?: BookingStringRelation | null;
+  cross_string?: BookingStringRelation | null;
+};
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => formatKstDateKey();
+const MIN_TENSION = 35;
+const MAX_TENSION = 70;
 
 const formatSlot = (slot: BookingSlot) => {
-  const start = new Date(slot.start_time);
-  const end = new Date(slot.end_time);
+  return formatKstTime(slot.start_time);
+};
 
-  return `${start.getUTCHours().toString().padStart(2, '0')}:${start
-    .getUTCMinutes()
-    .toString()
-    .padStart(2, '0')} - ${end
-    .getUTCHours()
-    .toString()
-    .padStart(2, '0')}:${end.getUTCMinutes().toString().padStart(2, '0')}`;
+const formatWon = (value?: number | null) =>
+  value === null || value === undefined ? '가격 문의' : `${value.toLocaleString('ko-KR')}원`;
+
+const clampTension = (value: number) => {
+  if (!Number.isFinite(value)) {
+    return MIN_TENSION;
+  }
+
+  return Math.min(MAX_TENSION, Math.max(MIN_TENSION, Math.round(value)));
+};
+
+const isSlotSelectable = (slot: BookingSlot) =>
+  !slot.is_blocked &&
+  slot.reserved_count < slot.capacity &&
+  !isPastIsoDateTime(slot.start_time);
+
+const getFirstSelectableSlotId = (slotRows: BookingSlot[]) =>
+  slotRows.find(isSlotSelectable)?.id || '';
+
+const getSixMonthsAgo = () => {
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - 6);
+  return cutoff;
+};
+
+const getStringLabel = (string?: BookingStringRelation | null) =>
+  [string?.brand, string?.name].filter(Boolean).join(' ') || '스트링 정보 없음';
+
+const getRebookStringSummary = (booking: RebookCandidate) => {
+  const main = getStringLabel(booking.main_string);
+  const cross = getStringLabel(booking.cross_string);
+
+  return main === cross ? main : `${main} / ${cross}`;
+};
+
+const getRebookTensionSummary = (booking: ServiceBooking) =>
+  booking.tension_main === booking.tension_cross
+    ? `균일 ${booking.tension_main} lbs`
+    : `메인 ${booking.tension_main} / 크로스 ${booking.tension_cross} lbs`;
+
+const getRecentRebookCandidates = (bookings: ServiceBooking[]) => {
+  const cutoff = getSixMonthsAgo();
+
+  return (bookings as RebookCandidate[]).filter((booking) => {
+    const createdAt = new Date(booking.created_at);
+
+    return Number.isFinite(createdAt.getTime()) && createdAt >= cutoff;
+  });
 };
 
 export default function NewBookingScreen() {
+  const router = useRouter();
   const { profile } = useAuth();
+  const menuSettings = useAppMenuSettings();
+  const canBookString = menuSettings['string-booking'];
+  const canBookDemo = menuSettings['demo-booking'];
+  const bookingMenusVisible = hasAnyBookingMenu(menuSettings);
+  const deliveryEnabled = menuSettings.delivery;
+  const availableDeliveryMethods: ServiceDeliveryMethod[] = deliveryEnabled
+    ? ['store_pickup', 'local_quick', 'parcel']
+    : ['store_pickup'];
   const profileId = profile?.id;
   const [mode, setMode] = useState<BookingMode>('stringing');
   const [date, setDate] = useState(today());
@@ -53,12 +140,16 @@ export default function NewBookingScreen() {
   const [demoRackets, setDemoRackets] = useState<DemoRacket[]>([]);
   const [strings, setStrings] = useState<StringCatalogItem[]>([]);
   const [slots, setSlots] = useState<BookingSlot[]>([]);
+  const [shopSchedule, setShopSchedule] =
+    useState<ShopSchedule[]>(defaultShopSchedule);
+  const [closedDates, setClosedDates] = useState<ClosedDate[]>([]);
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [previousBookings, setPreviousBookings] = useState<ServiceBooking[]>([]);
   const [selectedRacketId, setSelectedRacketId] = useState('');
   const [selectedDemoRacketId, setSelectedDemoRacketId] = useState('');
   const [mainStringId, setMainStringId] = useState('');
   const [crossStringId, setCrossStringId] = useState('');
+  const [useSameTension, setUseSameTension] = useState(true);
   const [tensionMain, setTensionMain] = useState('48');
   const [tensionCross, setTensionCross] = useState('48');
   const [slotId, setSlotId] = useState('');
@@ -69,19 +160,57 @@ export default function NewBookingScreen() {
   const [userNotes, setUserNotes] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<string>();
+  const [successDialog, setSuccessDialog] = useState<{
+    title: string;
+    message?: string;
+  } | null>(null);
+
+  const resetForm = useCallback(() => {
+    setMode(canBookString ? 'stringing' : 'demo');
+    setDate(today());
+    setSelectedRacketId(rackets[0]?.id || '');
+    setSelectedDemoRacketId(demoRackets[0]?.id || '');
+    setMainStringId(strings[0]?.id || '');
+    setCrossStringId(strings[0]?.id || '');
+    setUseSameTension(true);
+    setTensionMain('48');
+    setTensionCross('48');
+    setSlotId(
+      getFirstSelectableSlotId(slots),
+    );
+    setDeliveryMethod('store_pickup');
+    setAddressId(addresses.find((item) => item.is_default)?.id || '');
+    setExpectedReturnTime('');
+    setUserNotes('');
+    setMessage(undefined);
+    setSuccessDialog(null);
+    setIsLoading(false);
+  }, [addresses, canBookString, demoRackets, rackets, slots, strings]);
+
+  useResetOnBlur(resetForm);
 
   const loadBaseData = useCallback(async () => {
     if (!profileId) {
       return;
     }
 
-    const [racketRows, stringRows, addressRows, previousRows, demoRows] =
+    const [
+      racketRows,
+      stringRows,
+      addressRows,
+      previousRows,
+      demoRows,
+      scheduleRows,
+      closedDateRows,
+    ] =
       await Promise.all([
         getRackets(profileId),
         getActiveStrings(),
         getAddresses(profileId),
         getMyBookings(profileId),
         getDemoRackets(),
+        getSchedule(),
+        getClosedDates(),
       ]);
 
     setRackets(racketRows);
@@ -89,6 +218,8 @@ export default function NewBookingScreen() {
     setAddresses(addressRows);
     setPreviousBookings(previousRows);
     setDemoRackets(demoRows);
+    setShopSchedule(scheduleRows);
+    setClosedDates(closedDateRows);
     setSelectedRacketId((current) => current || racketRows[0]?.id || '');
     setSelectedDemoRacketId((current) => current || demoRows[0]?.id || '');
     setMainStringId((current) => current || stringRows[0]?.id || '');
@@ -97,12 +228,12 @@ export default function NewBookingScreen() {
   }, [profileId]);
 
   const loadSlots = useCallback(async () => {
-    const slotRows = await getAvailableSlots(date, mode);
+    const slotRows = await getBookingSlotsForDate(date, mode);
     setSlots(slotRows);
     setSlotId((current) =>
-      current && slotRows.some((slot) => slot.id === current)
+      current && slotRows.some((slot) => slot.id === current && isSlotSelectable(slot))
         ? current
-        : slotRows[0]?.id || '',
+        : getFirstSelectableSlotId(slotRows),
     );
   }, [date, mode]);
 
@@ -114,9 +245,59 @@ export default function NewBookingScreen() {
     loadSlots().catch(() => setMessage('예약 가능한 시간을 불러오지 못했습니다.'));
   }, [loadSlots]);
 
+  useEffect(() => {
+    if (mode === 'stringing' && !canBookString && canBookDemo) {
+      setMode('demo');
+    }
+
+    if (mode === 'demo' && !canBookDemo && canBookString) {
+      setMode('stringing');
+    }
+  }, [canBookDemo, canBookString, mode]);
+
+  useEffect(() => {
+    if (!deliveryEnabled && deliveryMethod !== 'store_pickup') {
+      setDeliveryMethod('store_pickup');
+      setAddressId('');
+    }
+  }, [deliveryEnabled, deliveryMethod]);
+
+  useEffect(() => {
+    if (!useSameTension) {
+      return;
+    }
+
+    setTensionCross(tensionMain);
+    setCrossStringId(mainStringId);
+  }, [mainStringId, tensionMain, useSameTension]);
+
+  useEffect(() => {
+    if (!useSameTension || !mainStringId) {
+      return;
+    }
+
+    setCrossStringId(mainStringId);
+  }, [mainStringId, useSameTension]);
+
   const selectedSlot = useMemo(
     () => slots.find((slot) => slot.id === slotId),
     [slotId, slots],
+  );
+  const availableSlotCount = useMemo(
+    () => slots.filter(isSlotSelectable).length,
+    [slots],
+  );
+  const businessHoursLabel = useMemo(
+    () => getBusinessHoursLabel(date, shopSchedule, closedDates),
+    [closedDates, date, shopSchedule],
+  );
+  const recentPreviousBookings = useMemo(
+    () => getRecentRebookCandidates(previousBookings),
+    [previousBookings],
+  );
+  const getBookingDateStatus = useCallback(
+    (value: string) => getCalendarDateStatus(value, shopSchedule, closedDates),
+    [closedDates, shopSchedule],
   );
 
   useEffect(() => {
@@ -141,9 +322,20 @@ export default function NewBookingScreen() {
     setCrossStringId(prefill.cross_string_id);
     setTensionMain(String(prefill.tension_main));
     setTensionCross(String(prefill.tension_cross));
-    setDeliveryMethod(prefill.delivery_method);
-    setAddressId(prefill.address_id ?? '');
+    setUseSameTension(
+      prefill.main_string_id === prefill.cross_string_id &&
+        prefill.tension_main === prefill.tension_cross,
+    );
+    setDeliveryMethod(deliveryEnabled ? prefill.delivery_method : 'store_pickup');
+    setAddressId(deliveryEnabled ? prefill.address_id ?? '' : '');
     setMessage('이전 예약 설정을 불러왔습니다. 날짜와 시간만 새로 선택하세요.');
+  };
+
+  const handleSelectString = (id: string) => {
+    setMainStringId(id);
+    if (useSameTension) {
+      setCrossStringId(id);
+    }
   };
 
   const handleSubmit = async () => {
@@ -152,8 +344,49 @@ export default function NewBookingScreen() {
       return;
     }
 
+    if (mode === 'stringing' && !canBookString) {
+      setMessage('현재 스트링 작업 예약 메뉴가 비활성화되어 있습니다.');
+      return;
+    }
+
+    if (mode === 'demo' && !canBookDemo) {
+      setMessage('현재 시타 예약 메뉴가 비활성화되어 있습니다.');
+      return;
+    }
+
+    if (mode === 'stringing' && !selectedRacketId) {
+      setMessage('예약할 라켓을 선택하세요.');
+      return;
+    }
+
+    const effectiveCrossStringId = useSameTension ? mainStringId : crossStringId;
+    const effectiveTensionCross = useSameTension ? tensionMain : tensionCross;
+    const effectiveDeliveryMethod = deliveryEnabled ? deliveryMethod : 'store_pickup';
+    const effectiveAddressId = deliveryEnabled ? addressId || null : null;
+
+    if (mode === 'stringing' && (!mainStringId || !effectiveCrossStringId)) {
+      setMessage('예약할 스트링을 선택하세요.');
+      return;
+    }
+
+    if (mode === 'demo' && !selectedDemoRacketId) {
+      setMessage('시타할 라켓을 선택하세요.');
+      return;
+    }
+
     if (!slotId) {
       setMessage('예약 시간을 선택하세요.');
+      return;
+    }
+
+    if (!selectedSlot || !isSlotSelectable(selectedSlot)) {
+      setMessage('현재 시간 이후의 예약 시간을 선택해 주세요.');
+      await loadSlots();
+      return;
+    }
+
+    if (mode === 'demo' && isPastIsoDateTime(expectedReturnTime)) {
+      setMessage('현재 시간 이후의 반납 예정 시간을 선택해 주세요.');
       return;
     }
 
@@ -162,19 +395,22 @@ export default function NewBookingScreen() {
 
     try {
       if (mode === 'stringing') {
-        await createBooking({
+        const booking = await createBooking({
           userId: profileId,
           racketId: selectedRacketId,
           mainStringId,
-          crossStringId,
+          crossStringId: effectiveCrossStringId,
           tensionMain: Number(tensionMain),
-          tensionCross: Number(tensionCross),
+          tensionCross: Number(effectiveTensionCross),
           slotId,
-          deliveryMethod,
-          addressId: addressId || null,
+          deliveryMethod: effectiveDeliveryMethod,
+          addressId: effectiveAddressId,
           userNotes,
         });
-        setMessage('스트링 예약이 접수되었습니다.');
+        setSuccessDialog({
+          title: '스트링 예약이 접수되었습니다',
+          message: `예약 번호: ${booking.id}`,
+        });
       } else {
         await createDemoBooking({
           userId: profileId,
@@ -183,10 +419,14 @@ export default function NewBookingScreen() {
           expectedReturnTime,
           userNotes,
         });
-        setMessage('시타 예약이 접수되었습니다.');
+        setSuccessDialog({
+          title: '시타 예약이 접수되었습니다',
+          message: '확인을 누르면 예약 목록으로 이동합니다.',
+        });
       }
 
       await loadSlots();
+      await loadBaseData();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '예약 생성 실패');
     } finally {
@@ -195,73 +435,92 @@ export default function NewBookingScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <RefreshableScrollView contentContainerStyle={styles.container}>
+      <FeedbackDialog
+        visible={successDialog !== null}
+        title={successDialog?.title ?? ''}
+        message={successDialog?.message}
+        onConfirm={() => {
+          setSuccessDialog(null);
+          router.replace('/booking');
+        }}
+      />
       <View style={styles.header}>
-        <Typography variant="h1">새 예약</Typography>
+        <View style={styles.titleRow}>
+          <BackButton onPress={() => router.back()} />
+          <Typography variant="h1">새 예약</Typography>
+        </View>
+        {bookingMenusVisible ? (
         <View style={styles.segment}>
+          {canBookString ? (
           <ModeButton active={mode === 'stringing'} onPress={() => setMode('stringing')}>
             스트링
           </ModeButton>
+          ) : null}
+          {canBookDemo ? (
           <ModeButton active={mode === 'demo'} onPress={() => setMode('demo')}>
             시타
           </ModeButton>
+          ) : null}
         </View>
+        ) : null}
       </View>
 
-      {mode === 'stringing' ? (
+      {!bookingMenusVisible ? (
         <View style={styles.section}>
-          <Typography variant="h2">1. 라켓</Typography>
-          <PickerRow
+          <Typography variant="caption" style={styles.muted}>
+            현재 예약 메뉴가 비활성화되어 있습니다.
+          </Typography>
+        </View>
+      ) : null}
+
+      {bookingMenusVisible && mode === 'stringing' ? (
+        <View style={styles.section}>
+          <RacketSelectPanel
             items={rackets}
-            labelOf={(item) => `${item.brand} ${item.model}`}
             selectedId={selectedRacketId}
             onSelect={setSelectedRacketId}
           />
 
-          <Typography variant="h2">2. 스트링</Typography>
-          <PickerRow
+          <StringSelectPanel
             items={strings}
-            labelOf={(item) => `${item.brand} ${item.name}`}
-            selectedId={mainStringId}
-            onSelect={setMainStringId}
-          />
-          <PickerRow
-            items={strings}
-            labelOf={(item) => `크로스 ${item.brand} ${item.name}`}
-            selectedId={crossStringId}
-            onSelect={setCrossStringId}
+            isHybrid={!useSameTension}
+            mainStringId={mainStringId}
+            crossStringId={crossStringId}
+            onSelectMain={handleSelectString}
+            onSelectCross={setCrossStringId}
           />
 
-          <Typography variant="h2">3. 텐션</Typography>
-          <View style={styles.twoColumn}>
-            <Input
-              keyboardType="numeric"
-              label="메인 텐션"
-              onChangeText={setTensionMain}
-              value={tensionMain}
-            />
-            <Input
-              keyboardType="numeric"
-              label="크로스 텐션"
-              onChangeText={setTensionCross}
-              value={tensionCross}
-            />
-          </View>
-
-          <Typography variant="h2">다시 예약</Typography>
-          <PickerRow
-            items={previousBookings.slice(0, 3)}
-            labelOf={(item) => `이전 설정 ${item.tension_main}/${item.tension_cross} lbs`}
-            selectedId=""
-            onSelect={(id) => {
-              const booking = previousBookings.find((item) => item.id === id);
-              if (booking) {
-                applyRebook(booking);
+          <TensionSelectPanel
+            isUniform={useSameTension}
+            tensionMain={Number(tensionMain)}
+            tensionCross={Number(tensionCross)}
+            onModeChange={(isUniform) => {
+              setUseSameTension(isUniform);
+              if (isUniform) {
+                setTensionCross(tensionMain);
+                setCrossStringId(mainStringId);
+              } else if (!crossStringId) {
+                setCrossStringId(mainStringId);
               }
             }}
+            onTensionMainChange={(value) => {
+              const next = String(clampTension(value));
+              setTensionMain(next);
+              if (useSameTension) {
+                setTensionCross(next);
+              }
+            }}
+            onTensionCrossChange={(value) => setTensionCross(String(clampTension(value)))}
+          />
+
+          <Typography variant="h2">다시 예약</Typography>
+          <RebookHistoryPanel
+            items={recentPreviousBookings}
+            onSelect={applyRebook}
           />
         </View>
-      ) : (
+      ) : bookingMenusVisible ? (
         <View style={styles.section}>
           <Typography variant="h2">1. 시타 라켓</Typography>
           <PickerRow
@@ -271,32 +530,49 @@ export default function NewBookingScreen() {
             onSelect={setSelectedDemoRacketId}
           />
         </View>
-      )}
+      ) : null}
 
+      {bookingMenusVisible ? (
       <View style={styles.section}>
         <Typography variant="h2">{mode === 'stringing' ? '4' : '2'}. 날짜/시간</Typography>
-        <Input label="날짜" onChangeText={setDate} placeholder="YYYY-MM-DD" value={date} />
-        <PickerRow
+        <CalendarPicker
+          getDateStatus={getBookingDateStatus}
+          label="날짜"
+          minDate={today()}
+          selectedDate={date}
+          onSelectDate={setDate}
+          showStatusLegend
+        />
+        <View style={styles.slotSummary}>
+          <Typography variant="caption" style={styles.muted}>
+            {businessHoursLabel}
+          </Typography>
+          <Typography variant="caption" style={styles.muted}>
+            예약 가능 {availableSlotCount}개
+          </Typography>
+        </View>
+        <SlotPickerRow
           items={slots}
-          labelOf={(item) => formatSlot(item)}
           selectedId={slotId}
           onSelect={setSlotId}
         />
         {mode === 'demo' ? (
-          <Input
+          <DateTimeCalendarPicker
             label="반납 예정 시간"
-            onChangeText={setExpectedReturnTime}
-            placeholder="2026-05-04T12:00:00.000Z"
+            minDate={today()}
+            minDateTime={new Date().toISOString()}
+            onChange={setExpectedReturnTime}
             value={expectedReturnTime}
           />
         ) : null}
       </View>
+      ) : null}
 
-      {mode === 'stringing' ? (
+      {bookingMenusVisible && mode === 'stringing' ? (
         <View style={styles.section}>
           <Typography variant="h2">5. 수령 방식</Typography>
           <View style={styles.chipRow}>
-            {(['store_pickup', 'local_quick', 'parcel'] as ServiceDeliveryMethod[]).map(
+            {availableDeliveryMethods.map(
               (method) => (
                 <Chip
                   active={deliveryMethod === method}
@@ -323,6 +599,7 @@ export default function NewBookingScreen() {
         </View>
       ) : null}
 
+      {bookingMenusVisible ? (
       <View style={styles.section}>
         <Typography variant="h2">{mode === 'stringing' ? '6' : '3'}. 메모</Typography>
         <Input
@@ -340,7 +617,8 @@ export default function NewBookingScreen() {
           </Typography>
         ) : null}
       </View>
-    </ScrollView>
+      ) : null}
+    </RefreshableScrollView>
   );
 }
 
@@ -393,6 +671,463 @@ function Chip({
   );
 }
 
+function RadioMark({ active }: { active: boolean }) {
+  return (
+    <View style={[styles.radioOuter, active && styles.radioOuterActive]}>
+      {active ? <View style={styles.radioInner} /> : null}
+    </View>
+  );
+}
+
+function RacketSelectPanel({
+  items,
+  selectedId,
+  onSelect,
+}: {
+  items: UserRacket[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+}) {
+  if (items.length === 0) {
+    return (
+      <View style={styles.previewPanel}>
+        <Typography variant="body" style={styles.previewTitle}>
+          라켓 선택
+        </Typography>
+        <Typography variant="caption" style={styles.muted}>
+          선택 가능한 항목이 없습니다.
+        </Typography>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.previewPanel}>
+      <View>
+        <Typography variant="body" style={styles.previewTitle}>
+          라켓 선택
+        </Typography>
+        <Typography variant="caption" style={styles.muted}>
+          내 라켓 라이브러리에서 선택
+        </Typography>
+      </View>
+      <View style={styles.previewList}>
+        {items.map((item) => {
+          const active = selectedId === item.id;
+
+          return (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              key={item.id}
+              onPress={() => onSelect(item.id)}
+              style={[styles.previewRow, active && styles.previewRowActive]}
+            >
+              <RadioMark active={active} />
+              <View style={styles.previewRowText}>
+                <View style={styles.previewTitleRow}>
+                  <Typography variant="body" style={styles.previewRowTitle}>
+                    {item.brand} {item.model}
+                  </Typography>
+                  {item.is_primary ? (
+                    <View style={styles.miniBadge}>
+                      <Typography variant="caption" style={styles.miniBadgeText}>
+                        MAIN
+                      </Typography>
+                    </View>
+                  ) : null}
+                </View>
+                <Typography variant="caption" style={styles.muted}>
+                  {[item.weight ? `${item.weight}g` : null, item.grip_size ? `그립 ${item.grip_size}` : null]
+                    .filter(Boolean)
+                    .join(' · ') || '스펙 미등록'}
+                </Typography>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function StringSelectPanel({
+  items,
+  isHybrid,
+  mainStringId,
+  crossStringId,
+  onSelectMain,
+  onSelectCross,
+}: {
+  items: StringCatalogItem[];
+  isHybrid: boolean;
+  mainStringId: string;
+  crossStringId: string;
+  onSelectMain: (id: string) => void;
+  onSelectCross: (id: string) => void;
+}) {
+  if (items.length === 0) {
+    return (
+      <View style={styles.previewPanel}>
+        <Typography variant="body" style={styles.previewTitle}>
+          스트링 선택
+        </Typography>
+        <Typography variant="caption" style={styles.muted}>
+          선택 가능한 항목이 없습니다.
+        </Typography>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.previewPanel}>
+      <View>
+        <Typography variant="body" style={styles.previewTitle}>
+          스트링 선택
+        </Typography>
+        <Typography variant="caption" style={styles.muted}>
+          {isHybrid
+            ? '메인과 크로스 스트링을 각각 선택합니다.'
+            : '단일 스트링을 메인/크로스에 동일 적용합니다.'}
+        </Typography>
+      </View>
+      {isHybrid ? (
+        <View style={styles.previewList}>
+          <StringChoiceList
+            items={items}
+            label="메인 스트링"
+            selectedId={mainStringId}
+            onSelect={onSelectMain}
+          />
+          <StringChoiceList
+            items={items}
+            label="크로스 스트링"
+            selectedId={crossStringId}
+            onSelect={onSelectCross}
+          />
+        </View>
+      ) : (
+        <StringChoiceList
+          items={items}
+          label="단일 스트링"
+          selectedId={mainStringId}
+          onSelect={onSelectMain}
+        />
+      )}
+    </View>
+  );
+}
+
+function StringChoiceList({
+  items,
+  label,
+  selectedId,
+  onSelect,
+}: {
+  items: StringCatalogItem[];
+  label: string;
+  selectedId: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <View style={styles.stringChoiceGroup}>
+      <Typography variant="caption" style={styles.choiceGroupTitle}>
+        {label}
+      </Typography>
+      <View style={styles.previewList}>
+        {items.map((item, index) => {
+          const active = selectedId === item.id;
+          const itemLabel = `${item.brand} ${item.name}`;
+
+          return (
+            <Pressable
+              accessibilityLabel={`${label} ${itemLabel}`}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              key={`${label}-${item.id}`}
+              onPress={() => onSelect(item.id)}
+              style={[styles.previewRow, active && styles.previewRowActive]}
+            >
+              <RadioMark active={active} />
+              <View style={styles.previewRowText}>
+                <View style={styles.previewTitleRow}>
+                  <Typography variant="body" style={styles.previewRowTitle}>
+                    {itemLabel}
+                  </Typography>
+                  {item.recommended_style ? (
+                    <View style={styles.secondaryMiniBadge}>
+                      <Typography variant="caption" style={styles.secondaryMiniBadgeText}>
+                        {item.recommended_style}
+                      </Typography>
+                    </View>
+                  ) : null}
+                  {index === 0 ? (
+                    <View style={styles.miniBadge}>
+                      <Typography variant="caption" style={styles.miniBadgeText}>
+                        인기
+                      </Typography>
+                    </View>
+                  ) : null}
+                </View>
+                <Typography variant="caption" style={styles.muted}>
+                  {[item.gauge ? `${item.gauge}mm` : null, item.color].filter(Boolean).join(' · ') || '상세 정보 없음'}
+                </Typography>
+              </View>
+              <Typography variant="body" style={styles.priceText}>
+                {formatWon(item.price)}
+              </Typography>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function TensionButton({
+  label,
+  onPress,
+}: {
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityLabel={label}
+      accessibilityRole="button"
+      onPress={onPress}
+      style={styles.tensionRoundButton}
+    >
+      <Typography variant="body" style={styles.tensionRoundButtonText}>
+        {label.includes('감소') ? '-' : '+'}
+      </Typography>
+    </Pressable>
+  );
+}
+
+function TensionField({
+  hint,
+  label,
+  value,
+  onChange,
+}: {
+  hint: string;
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <View style={styles.tensionField}>
+      <View style={styles.tensionFieldHeader}>
+        <Typography variant="caption" style={styles.tensionLabel}>
+          {label}
+        </Typography>
+        <Typography variant="caption" style={styles.muted}>
+          {hint}
+        </Typography>
+      </View>
+      <View style={styles.tensionControlRow}>
+        <TensionButton label={`${label} 텐션 감소`} onPress={() => onChange(value - 1)} />
+        <View style={styles.tensionValueBox}>
+          <TextInput
+            accessibilityLabel={`${label} 텐션 직접 입력`}
+            keyboardType="numeric"
+            onChangeText={(text) => onChange(Number(text))}
+            value={String(value)}
+            style={styles.tensionInput}
+          />
+          <Typography variant="caption" style={styles.tensionUnit}>
+            LB
+          </Typography>
+        </View>
+        <TensionButton label={`${label} 텐션 증가`} onPress={() => onChange(value + 1)} />
+      </View>
+    </View>
+  );
+}
+
+function TensionSelectPanel({
+  isUniform,
+  tensionMain,
+  tensionCross,
+  onModeChange,
+  onTensionMainChange,
+  onTensionCrossChange,
+}: {
+  isUniform: boolean;
+  tensionMain: number;
+  tensionCross: number;
+  onModeChange: (isUniform: boolean) => void;
+  onTensionMainChange: (value: number) => void;
+  onTensionCrossChange: (value: number) => void;
+}) {
+  return (
+    <View style={styles.previewPanel}>
+      <View>
+        <Typography variant="body" style={styles.previewTitle}>
+          텐션
+        </Typography>
+        <Typography variant="caption" style={styles.muted}>
+          {MIN_TENSION}~{MAX_TENSION} LB · 직접 입력 또는 +/- 버튼으로 조정
+        </Typography>
+      </View>
+      <View style={styles.tensionModeTabs}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ selected: isUniform }}
+          onPress={() => onModeChange(true)}
+          style={[styles.tensionModeTab, isUniform && styles.tensionModeTabActive]}
+        >
+          <Typography
+            variant="caption"
+            style={[styles.tensionModeText, isUniform && styles.tensionModeTextActive]}
+          >
+            균일 텐션
+          </Typography>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ selected: !isUniform }}
+          onPress={() => onModeChange(false)}
+          style={[styles.tensionModeTab, !isUniform && styles.tensionModeTabActive]}
+        >
+          <Typography
+            variant="caption"
+            style={[styles.tensionModeText, !isUniform && styles.tensionModeTextActive]}
+          >
+            하이브리드 (메인/크로스)
+          </Typography>
+        </Pressable>
+      </View>
+      {isUniform ? (
+        <TensionField
+          hint="메인 · 크로스 동일"
+          label="텐션"
+          onChange={onTensionMainChange}
+          value={tensionMain}
+        />
+      ) : (
+        <View style={styles.previewList}>
+          <TensionField
+            hint="세로 스트링"
+            label="Main"
+            onChange={onTensionMainChange}
+            value={tensionMain}
+          />
+          <TensionField
+            hint="가로 스트링"
+            label="Cross"
+            onChange={onTensionCrossChange}
+            value={tensionCross}
+          />
+        </View>
+      )}
+      <View style={styles.tensionSummary}>
+        <Typography variant="caption" style={styles.muted}>
+          {isUniform
+            ? `균일 · ${tensionMain} LB`
+            : `하이브리드 · 메인 ${tensionMain} / 크로스 ${tensionCross} LB`}
+        </Typography>
+      </View>
+    </View>
+  );
+}
+
+function SlotPickerRow({
+  items,
+  selectedId,
+  onSelect,
+}: {
+  items: BookingSlot[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+}) {
+  if (items.length === 0) {
+    return (
+      <Typography variant="caption" style={styles.muted}>
+        선택 가능한 항목이 없습니다.
+      </Typography>
+    );
+  }
+
+  return (
+    <View style={styles.chipRow}>
+      {items.map((item) => {
+        const active = selectedId === item.id;
+        const selectable = isSlotSelectable(item);
+
+        return (
+          <Pressable
+            accessibilityLabel={`예약 시간 ${formatSlot(item)}`}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !selectable, selected: active }}
+            disabled={!selectable}
+            key={item.id}
+            onPress={() => onSelect(item.id)}
+            style={[
+              styles.chip,
+              active && styles.chipActive,
+              !selectable && styles.disabledSlotChip,
+            ]}
+          >
+            <Typography
+              variant="caption"
+              style={[
+                active && styles.chipTextActive,
+                !selectable && styles.disabledSlotText,
+              ]}
+            >
+              {formatSlot(item)}
+            </Typography>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function RebookHistoryPanel({
+  items,
+  onSelect,
+}: {
+  items: RebookCandidate[];
+  onSelect: (booking: ServiceBooking) => void;
+}) {
+  if (items.length === 0) {
+    return (
+      <Typography variant="caption" style={styles.muted}>
+        최근 6개월 이내 다시 불러올 예약 기록이 없습니다.
+      </Typography>
+    );
+  }
+
+  return (
+    <View style={styles.rebookList}>
+      {items.map((item) => (
+        <Pressable
+          accessibilityLabel={`다시 예약 ${item.id} 불러오기`}
+          accessibilityRole="button"
+          key={item.id}
+          onPress={() => onSelect(item)}
+          style={styles.rebookCard}
+        >
+          <View style={styles.previewRowText}>
+            <Typography variant="body" style={styles.previewRowTitle}>
+              {getRebookStringSummary(item)}
+            </Typography>
+            <Typography variant="caption" style={styles.muted}>
+              {getRebookTensionSummary(item)}
+            </Typography>
+          </View>
+          <Typography variant="caption" style={styles.rebookActionText}>
+            불러오기
+          </Typography>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
 function PickerRow<T extends { id: string }>({
   items,
   labelOf,
@@ -437,6 +1172,11 @@ const styles = StyleSheet.create({
   header: {
     gap: theme.spacing[4],
   },
+  titleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing[2],
+  },
   section: {
     backgroundColor: lightColors.card.hex,
     borderColor: lightColors.border.hex,
@@ -444,6 +1184,12 @@ const styles = StyleSheet.create({
     borderWidth: theme.borderWidth.hairline,
     gap: theme.spacing[3],
     padding: theme.spacing[4],
+  },
+  sectionTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing[3],
+    justifyContent: 'space-between',
   },
   segment: {
     backgroundColor: lightColors.muted.hex,
@@ -472,6 +1218,107 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: theme.spacing[2],
   },
+  previewPanel: {
+    backgroundColor: lightColors.card.hex,
+    borderColor: lightColors.border.hex,
+    borderRadius: theme.borderRadius.lg,
+    borderWidth: theme.borderWidth.hairline,
+    gap: theme.spacing[3],
+    padding: theme.spacing[4],
+  },
+  previewTitle: {
+    color: lightColors.foreground.hex,
+    fontFamily: theme.typography.fontFamily.display,
+    fontWeight: theme.typography.fontWeight.bold,
+  },
+  previewList: {
+    gap: theme.spacing[2],
+  },
+  stringChoiceGroup: {
+    gap: theme.spacing[2],
+  },
+  choiceGroupTitle: {
+    color: lightColors.foreground.hex,
+    fontWeight: theme.typography.fontWeight.bold,
+  },
+  previewRow: {
+    alignItems: 'center',
+    backgroundColor: lightColors.background.hex,
+    borderColor: lightColors.border.hex,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth.hairline,
+    flexDirection: 'row',
+    gap: theme.spacing[3],
+    padding: theme.spacing[3],
+  },
+  previewRowActive: {
+    backgroundColor: 'rgba(16,60,40,0.05)',
+    borderColor: lightColors.primary.hex,
+  },
+  previewRowText: {
+    flex: 1,
+    gap: theme.spacing[1],
+    minWidth: 0,
+  },
+  previewTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing[1],
+  },
+  previewRowTitle: {
+    color: lightColors.foreground.hex,
+    fontWeight: theme.typography.fontWeight.semibold,
+  },
+  radioOuter: {
+    alignItems: 'center',
+    borderColor: lightColors.mutedForeground.hex,
+    borderRadius: 999,
+    borderWidth: 2,
+    height: 20,
+    justifyContent: 'center',
+    width: 20,
+  },
+  radioOuterActive: {
+    borderColor: lightColors.primary.hex,
+  },
+  radioInner: {
+    backgroundColor: lightColors.primary.hex,
+    borderRadius: 999,
+    height: 10,
+    width: 10,
+  },
+  miniBadge: {
+    backgroundColor: lightColors.accent.hex,
+    borderRadius: theme.borderRadius.sm,
+    paddingHorizontal: theme.spacing[1],
+    paddingVertical: 2,
+  },
+  miniBadgeText: {
+    color: lightColors.accentForeground.hex,
+    fontWeight: theme.typography.fontWeight.bold,
+  },
+  secondaryMiniBadge: {
+    backgroundColor: lightColors.secondary.hex,
+    borderRadius: theme.borderRadius.sm,
+    paddingHorizontal: theme.spacing[1],
+    paddingVertical: 2,
+  },
+  secondaryMiniBadgeText: {
+    color: lightColors.secondaryForeground.hex,
+    fontWeight: theme.typography.fontWeight.semibold,
+  },
+  priceText: {
+    color: lightColors.foreground.hex,
+    fontWeight: theme.typography.fontWeight.bold,
+  },
+  slotSummary: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing[2],
+    justifyContent: 'space-between',
+  },
   chip: {
     backgroundColor: lightColors.background.hex,
     borderColor: lightColors.border.hex,
@@ -487,8 +1334,125 @@ const styles = StyleSheet.create({
   chipTextActive: {
     color: lightColors.primaryForeground.hex,
   },
+  disabledSlotChip: {
+    backgroundColor: lightColors.secondary.hex,
+    borderColor: lightColors.border.hex,
+    opacity: theme.opacity.disabled,
+  },
+  disabledSlotText: {
+    color: lightColors.mutedForeground.hex,
+    textDecorationLine: 'line-through',
+  },
+  tensionModeTabs: {
+    backgroundColor: lightColors.secondary.hex,
+    borderRadius: theme.borderRadius.md,
+    flexDirection: 'row',
+    gap: theme.spacing[1],
+    padding: theme.spacing[1],
+  },
+  tensionModeTab: {
+    alignItems: 'center',
+    borderRadius: theme.borderRadius.sm,
+    flex: 1,
+    minHeight: theme.controlHeights.sm,
+    justifyContent: 'center',
+    paddingHorizontal: theme.spacing[2],
+  },
+  tensionModeTabActive: {
+    backgroundColor: lightColors.card.hex,
+  },
+  tensionModeText: {
+    color: lightColors.mutedForeground.hex,
+    fontWeight: theme.typography.fontWeight.semibold,
+  },
+  tensionModeTextActive: {
+    color: lightColors.foreground.hex,
+  },
+  tensionField: {
+    backgroundColor: lightColors.secondary.hex,
+    borderRadius: theme.borderRadius.md,
+    gap: theme.spacing[2],
+    padding: theme.spacing[3],
+  },
+  tensionFieldHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  tensionLabel: {
+    color: lightColors.foreground.hex,
+    fontWeight: theme.typography.fontWeight.bold,
+  },
+  tensionControlRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing[2],
+  },
+  tensionRoundButton: {
+    alignItems: 'center',
+    backgroundColor: lightColors.card.hex,
+    borderColor: lightColors.border.hex,
+    borderRadius: 999,
+    borderWidth: theme.borderWidth.hairline,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  tensionRoundButtonText: {
+    color: lightColors.foreground.hex,
+    fontSize: 20,
+    fontWeight: theme.typography.fontWeight.bold,
+  },
+  tensionInput: {
+    color: lightColors.foreground.hex,
+    flex: 1,
+    fontFamily: theme.typography.fontFamily.display,
+    fontSize: 22,
+    fontWeight: theme.typography.fontWeight.bold,
+    minWidth: 0,
+    padding: 0,
+    textAlign: 'center',
+  },
+  tensionValueBox: {
+    alignItems: 'center',
+    backgroundColor: lightColors.card.hex,
+    borderColor: lightColors.border.hex,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth.hairline,
+    flex: 1,
+    flexDirection: 'row',
+    height: 40,
+    minWidth: 0,
+    paddingHorizontal: theme.spacing[2],
+  },
+  tensionUnit: {
+    color: lightColors.mutedForeground.hex,
+    fontWeight: theme.typography.fontWeight.semibold,
+  },
+  tensionSummary: {
+    backgroundColor: lightColors.secondary.hex,
+    borderRadius: theme.borderRadius.sm,
+    padding: theme.spacing[2],
+  },
   twoColumn: {
     gap: theme.spacing[3],
+  },
+  rebookList: {
+    gap: theme.spacing[2],
+  },
+  rebookCard: {
+    alignItems: 'center',
+    backgroundColor: lightColors.background.hex,
+    borderColor: lightColors.border.hex,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth.hairline,
+    flexDirection: 'row',
+    gap: theme.spacing[3],
+    padding: theme.spacing[3],
+  },
+  rebookActionText: {
+    color: lightColors.primary.hex,
+    fontWeight: theme.typography.fontWeight.bold,
   },
   muted: {
     color: lightColors.mutedForeground.hex,

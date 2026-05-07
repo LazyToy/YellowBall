@@ -32,7 +32,6 @@ describe('PR-01 프로젝트 초기 설정', () => {
     const requiredPaths = [
       'app/(auth)/_layout.tsx',
       'app/(tabs)/_layout.tsx',
-      'app/(admin)/_layout.tsx',
       'app/_layout.tsx',
       'src/components',
       'src/hooks',

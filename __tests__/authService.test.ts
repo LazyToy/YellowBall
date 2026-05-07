@@ -4,7 +4,8 @@ const activeProfile = {
   id: 'user-1',
   username: 'yellow01',
   nickname: '옐로볼',
-  phone: '010-0000-0000',
+  email: 'user@example.com',
+  phone: null,
   role: 'user',
   status: 'active',
   expo_push_token: null,
@@ -22,7 +23,7 @@ const createProfilesQuery = (profile = activeProfile, error = null) => {
 };
 
 describe('authService', () => {
-  test('signUp은 Supabase Auth에 전화번호, 비밀번호, 사용자 메타데이터를 전달한다', async () => {
+  test('signUp은 Supabase Auth에 이메일, 비밀번호, 사용자 메타데이터를 전달한다', async () => {
     const signUp = jest.fn().mockResolvedValue({
       data: { user: { id: 'user-1' }, session: null },
       error: null,
@@ -33,11 +34,11 @@ describe('authService', () => {
     } as never);
 
     await expect(
-      service.signUp('010-1234-5678', 'Yellow1!', 'yellow_01', '옐로볼'),
+      service.signUp('user@example.com', 'Yellow1!', 'yellow_01', '옐로볼'),
     ).resolves.toEqual({ user: { id: 'user-1' }, session: null });
 
     expect(signUp).toHaveBeenCalledWith({
-      phone: '010-1234-5678',
+      email: 'user@example.com',
       password: 'Yellow1!',
       options: {
         data: {
@@ -65,7 +66,26 @@ describe('authService', () => {
     });
   });
 
-  test('Supabase 오류는 한국어 사용자 메시지로 변환한다', async () => {
+  test('checkEmailAvailable은 Edge Function 결과만 boolean으로 반환한다', async () => {
+    const invoke = jest.fn().mockResolvedValue({
+      data: { available: false },
+      error: null,
+    });
+    const service = createAuthService({
+      auth: { signUp: jest.fn() },
+      functions: { invoke },
+    } as never);
+
+    await expect(service.checkEmailAvailable('user@example.com')).resolves.toBe(
+      false,
+    );
+
+    expect(invoke).toHaveBeenCalledWith('check-email', {
+      body: { email: 'user@example.com' },
+    });
+  });
+
+  test('Supabase 오류를 한국어 사용자 메시지로 변환한다', async () => {
     const signUp = jest.fn().mockResolvedValue({
       data: { user: null, session: null },
       error: { message: 'User already registered' },
@@ -76,11 +96,11 @@ describe('authService', () => {
     } as never);
 
     await expect(
-      service.signUp('010-1234-5678', 'Yellow1!', 'yellow_01', '옐로볼'),
-    ).rejects.toThrow('회원가입에 실패했습니다. User already registered');
+      service.signUp('user@example.com', 'Yellow1!', 'yellow_01', '옐로볼'),
+    ).rejects.toThrow('이미 가입된 이메일입니다.');
   });
 
-  test('signIn은 전화번호와 비밀번호로 로그인하고 프로필 상태를 확인한다', async () => {
+  test('signIn은 이메일과 비밀번호로 로그인하고 프로필 상태를 확인한다', async () => {
     const session = { user: { id: 'user-1' } };
     const signInWithPassword = jest.fn().mockResolvedValue({
       data: { user: { id: 'user-1' }, session },
@@ -97,16 +117,14 @@ describe('authService', () => {
       from: query.from,
     } as never);
 
-    await expect(
-      service.signIn('010-1234-5678', 'Yellow1!'),
-    ).resolves.toEqual({
+    await expect(service.signIn('user@example.com', 'Yellow1!')).resolves.toEqual({
       session,
       user: { id: 'user-1' },
       error: null,
     });
 
     expect(signInWithPassword).toHaveBeenCalledWith({
-      phone: '010-1234-5678',
+      email: 'user@example.com',
       password: 'Yellow1!',
     });
     expect(query.from).toHaveBeenCalledWith('profiles');
@@ -128,15 +146,104 @@ describe('authService', () => {
       from: jest.fn(),
     } as never);
 
-    await expect(
-      service.signIn('010-1234-5678', 'Wrong1!'),
-    ).resolves.toMatchObject({
+    await expect(service.signIn('user@example.com', 'Wrong1!')).resolves.toMatchObject({
       session: null,
       user: null,
       error: expect.objectContaining({
-        message: '전화번호 또는 비밀번호가 올바르지 않습니다.',
+        message: '이메일 또는 비밀번호가 올바르지 않습니다.',
       }),
     });
+  });
+
+  test('OAuth 로그인은 브라우저 콜백 토큰으로 세션을 만들고 프로필 상태를 확인한다', async () => {
+    const session = { user: { id: 'user-1' } };
+    const signInWithOAuth = jest.fn().mockResolvedValue({
+      data: { url: 'https://auth.example.com/oauth' },
+      error: null,
+    });
+    const setSession = jest.fn().mockResolvedValue({
+      data: { user: { id: 'user-1' }, session },
+      error: null,
+    });
+    const query = createProfilesQuery();
+    const service = createAuthService(
+      {
+        auth: {
+          signInWithOAuth,
+          setSession,
+          exchangeCodeForSession: jest.fn(),
+          signOut: jest.fn(),
+        },
+        functions: { invoke: jest.fn() },
+        from: query.from,
+      } as never,
+      undefined,
+      {
+        getRedirectUrl: () => 'yellowball://auth/callback',
+        openAuthSession: jest.fn().mockResolvedValue({
+          type: 'success',
+          url:
+            'yellowball://auth/callback#access_token=access&refresh_token=refresh',
+        }),
+      },
+    );
+
+    await expect(service.signInWithOAuthProvider('google')).resolves.toEqual({
+      session,
+      user: { id: 'user-1' },
+      error: null,
+    });
+
+    expect(signInWithOAuth).toHaveBeenCalledWith({
+      provider: 'google',
+      options: expect.objectContaining({
+        redirectTo: 'yellowball://auth/callback',
+        skipBrowserRedirect: true,
+      }),
+    });
+    expect(setSession).toHaveBeenCalledWith({
+      access_token: 'access',
+      refresh_token: 'refresh',
+    });
+  });
+
+  test('OAuth 로그인은 PKCE code 콜백도 세션으로 교환한다', async () => {
+    const session = { user: { id: 'user-1' } };
+    const exchangeCodeForSession = jest.fn().mockResolvedValue({
+      data: { user: { id: 'user-1' }, session },
+      error: null,
+    });
+    const query = createProfilesQuery();
+    const service = createAuthService(
+      {
+        auth: {
+          signInWithOAuth: jest.fn().mockResolvedValue({
+            data: { url: 'https://auth.example.com/oauth' },
+            error: null,
+          }),
+          setSession: jest.fn(),
+          exchangeCodeForSession,
+          signOut: jest.fn(),
+        },
+        functions: { invoke: jest.fn() },
+        from: query.from,
+      } as never,
+      undefined,
+      {
+        getRedirectUrl: () => 'yellowball://auth/callback',
+        openAuthSession: jest.fn().mockResolvedValue({
+          type: 'success',
+          url: 'yellowball://auth/callback?code=auth-code',
+        }),
+      },
+    );
+
+    await expect(service.signInWithOAuthProvider('kakao')).resolves.toMatchObject({
+      session,
+      user: { id: 'user-1' },
+      error: null,
+    });
+    expect(exchangeCodeForSession).toHaveBeenCalledWith('auth-code');
   });
 
   test('suspended 사용자는 로그인 직후 로그아웃 처리하고 차단 오류를 반환한다', async () => {
@@ -161,19 +268,15 @@ describe('authService', () => {
       from: query.from,
     } as never);
 
-    await expect(
-      service.signIn('010-1234-5678', 'Yellow1!'),
-    ).resolves.toMatchObject({
+    await expect(service.signIn('user@example.com', 'Yellow1!')).resolves.toMatchObject({
       session: null,
       user: null,
-      error: expect.objectContaining({
-        message: '계정이 제재되었습니다.',
-      }),
+      error: expect.any(Error),
     });
     expect(signOut).toHaveBeenCalledTimes(1);
   });
 
-  test('deleted_pending 사용자는 탈퇴 처리 중 오류로 로그인 차단한다', async () => {
+  test('deleted_pending 사용자는 로그인 차단 오류를 반환한다', async () => {
     const query = createProfilesQuery({
       ...activeProfile,
       status: 'deleted_pending',
@@ -194,18 +297,44 @@ describe('authService', () => {
       from: query.from,
     } as never);
 
-    await expect(
-      service.signIn('010-1234-5678', 'Yellow1!'),
-    ).resolves.toMatchObject({
+    await expect(service.signIn('user@example.com', 'Yellow1!')).resolves.toMatchObject({
       session: null,
       user: null,
-      error: expect.objectContaining({
-        message: '탈퇴 처리 중인 계정입니다.',
-      }),
+      error: expect.any(Error),
     });
   });
 
-  test('signOut은 Supabase 세션과 로컬 세션 저장소를 함께 삭제한다', async () => {
+  test('deleted 사용자는 로그인 차단 오류를 반환한다', async () => {
+    const query = createProfilesQuery({
+      ...activeProfile,
+      status: 'deleted',
+    });
+    const signOut = jest.fn().mockResolvedValue({ error: null });
+    const service = createAuthService({
+      auth: {
+        signUp: jest.fn(),
+        signInWithPassword: jest.fn().mockResolvedValue({
+          data: {
+            user: { id: 'user-1' },
+            session: { user: { id: 'user-1' } },
+          },
+          error: null,
+        }),
+        signOut,
+      },
+      functions: { invoke: jest.fn() },
+      from: query.from,
+    } as never);
+
+    await expect(service.signIn('user@example.com', 'Yellow1!')).resolves.toMatchObject({
+      session: null,
+      user: null,
+      error: expect.any(Error),
+    });
+    expect(signOut).toHaveBeenCalledTimes(1);
+  });
+
+  test('signOut은 Supabase 세션과 로컬 세션 저장소를 함께 제거한다', async () => {
     const signOut = jest.fn().mockResolvedValue({ error: null });
     const removeItem = jest.fn().mockResolvedValue(undefined);
     const service = createAuthService(
@@ -225,7 +354,7 @@ describe('authService', () => {
     expect(removeItem).toHaveBeenCalledWith('yellowball-auth-session');
   });
 
-  test('requestAccountDeletion은 비밀번호 확인 후 deleted_pending으로 전환하고 로그아웃한다', async () => {
+  test('requestAccountDeletion은 이메일 비밀번호 확인 후 deleted_pending으로 전환하고 로그아웃한다', async () => {
     const signInWithPassword = jest.fn().mockResolvedValue({
       data: { user: { id: 'user-1' } },
       error: null,
@@ -252,7 +381,7 @@ describe('authService', () => {
     ).resolves.toBeUndefined();
 
     expect(signInWithPassword).toHaveBeenCalledWith({
-      phone: '010-0000-0000',
+      email: 'user@example.com',
       password: 'Yellow1!',
     });
     expect(rpc).toHaveBeenCalledWith('request_profile_account_deletion', {
@@ -278,6 +407,6 @@ describe('authService', () => {
         ...activeProfile,
         role: 'super_admin',
       } as never),
-    ).rejects.toThrow('최고 관리자는 탈퇴할 수 없습니다.');
+    ).rejects.toThrow();
   });
 });

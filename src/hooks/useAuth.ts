@@ -3,7 +3,9 @@ import type { Session, User } from '@supabase/supabase-js';
 
 import {
   signIn as serviceSignIn,
+  signInWithOAuthProvider as serviceSignInWithOAuthProvider,
   signOut as serviceSignOut,
+  type SocialAuthProvider,
   type SignInResult,
 } from '../services/authService';
 import { getProfile } from '../services/profileService';
@@ -21,7 +23,10 @@ export type AuthSnapshot = {
 export type AuthState = AuthSnapshot & {
   isAdmin: boolean;
   isSuperAdmin: boolean;
-  signIn: (phone: string, password: string) => Promise<SignInResult>;
+  signIn: (email: string, password: string) => Promise<SignInResult>;
+  signInWithOAuthProvider: (
+    provider: SocialAuthProvider,
+  ) => Promise<SignInResult>;
   signOut: () => Promise<void>;
 };
 
@@ -66,6 +71,10 @@ const getBlockedAccountMessage = (profile: Profile) => {
 
   if (profile.status === 'deleted_pending') {
     return '탈퇴 처리 중인 계정입니다.';
+  }
+
+  if (profile.status === 'deleted') {
+    return '탈퇴가 완료된 계정입니다.';
   }
 
   return null;
@@ -150,14 +159,38 @@ export const resetAuthStateForTest = () => {
   };
 };
 
-const signIn = async (phone: string, password: string) => {
+const signIn = async (email: string, password: string) => {
   setSnapshot({
     ...snapshot,
     isLoading: true,
     errorMessage: null,
   });
 
-  const result = await serviceSignIn(phone, password);
+  const result = await serviceSignIn(email, password);
+
+  if (result.error || !result.session) {
+    setSnapshot({
+      session: null,
+      user: null,
+      profile: null,
+      isLoading: false,
+      errorMessage: result.error?.message ?? '로그인에 실패했습니다.',
+    });
+    return result;
+  }
+
+  await syncAuthSession(result.session);
+  return result;
+};
+
+const signInWithOAuthProvider = async (provider: SocialAuthProvider) => {
+  setSnapshot({
+    ...snapshot,
+    isLoading: true,
+    errorMessage: null,
+  });
+
+  const result = await serviceSignInWithOAuthProvider(provider);
 
   if (result.error || !result.session) {
     setSnapshot({
@@ -211,6 +244,7 @@ export function useAuth(): AuthState {
     isAdmin,
     isSuperAdmin,
     signIn,
+    signInWithOAuthProvider,
     signOut,
   };
 }

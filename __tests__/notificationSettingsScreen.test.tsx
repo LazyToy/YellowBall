@@ -3,6 +3,13 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
 const mockGetPreferences = jest.fn();
 const mockUpdatePreferences = jest.fn();
+const mockRouterBack = jest.fn();
+
+jest.mock('expo-router', () => ({
+  useRouter: () => ({
+    back: mockRouterBack,
+  }),
+}));
 
 const preferences = {
   user_id: 'user-1',
@@ -51,6 +58,7 @@ describe('NotificationSettingsScreen', () => {
         booking_notifications: false,
       }),
     );
+    await waitFor(() => expect(mockGetPreferences).toHaveBeenCalledTimes(2));
   });
 
   test('야간 시간 저장 실패 시 오류 메시지를 표시하고 이전 값으로 되돌린다', async () => {
@@ -62,7 +70,11 @@ describe('NotificationSettingsScreen', () => {
     await waitFor(() => expect(screen.getByLabelText('시작')).toBeTruthy());
 
     await act(async () => {
-      fireEvent.changeText(screen.getByLabelText('시작'), '23:00');
+      fireEvent.press(screen.getByLabelText('시작'));
+    });
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('시작 23:00'));
     });
 
     await waitFor(() =>

@@ -4,6 +4,7 @@ import type {
   ServiceBooking,
   ServiceDeliveryMethod,
 } from '@/types/database';
+import { isPastIsoDateTime } from './kstDateTime';
 
 const deliveryMethodsRequiringAddress = new Set<ServiceDeliveryMethod>([
   'local_quick',
@@ -47,11 +48,20 @@ export const assertProfileCanBook = (status: ProfileStatus) => {
   if (status === 'deleted_pending') {
     throw new Error('탈퇴 처리 중인 사용자는 예약할 수 없습니다.');
   }
+
+  if (status === 'deleted') {
+    throw new Error('탈퇴가 완료된 사용자는 예약할 수 없습니다.');
+  }
 };
 
 export const assertSlotAvailable = (
-  slot: Pick<BookingSlot, 'is_blocked' | 'reserved_count' | 'capacity'>,
+  slot: Pick<BookingSlot, 'is_blocked' | 'reserved_count' | 'capacity'> &
+    Partial<Pick<BookingSlot, 'start_time'>>,
 ) => {
+  if (slot.start_time && isPastIsoDateTime(slot.start_time)) {
+    throw new Error('현재 시간 이후의 예약 시간을 선택해 주세요.');
+  }
+
   if (slot.is_blocked) {
     throw new Error('차단된 슬롯은 예약할 수 없습니다.');
   }

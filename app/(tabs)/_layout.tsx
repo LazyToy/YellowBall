@@ -1,13 +1,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import type { BottomTabBarButtonProps } from '@react-navigation/bottom-tabs';
 import { Tabs } from 'expo-router';
 
+import { AppIcon, type AppIconName } from '@/components/AppIcon';
 import { NotificationOptInDialog } from '@/components/NotificationOptInDialog';
 import { lightColors, theme } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
+import { useAppMenuSettings } from '@/hooks/useAppMenuSettings';
+import { hasAnyBookingMenu } from '@/services/appMenuSettingsService';
 import {
-  hasNotificationOptIn,
+  getNotificationOptInStatus,
   registerPushToken,
   setNotificationOptIn,
 } from '@/services/notificationService';
@@ -15,23 +18,18 @@ import {
 type TabIconProps = {
   color: string;
   focused: boolean;
-  glyph: string;
+  name: AppIconName;
   size: number;
 };
 
-function TabIcon({ color, focused, glyph, size }: TabIconProps) {
+function TabIcon({ color, focused, name, size }: TabIconProps) {
   return (
-    <Text
-      style={[
-        styles.tabIcon,
-        {
-          color,
-          fontSize: focused ? size + 1 : size,
-        },
-      ]}
-    >
-      {glyph}
-    </Text>
+    <AppIcon
+      color={color}
+      name={name}
+      size={focused ? size + 1 : size}
+      strokeWidth={focused ? 2.7 : 2.2}
+    />
   );
 }
 
@@ -61,7 +59,12 @@ function NewBookingTabButton({
       testID={testID}
     >
       <View style={styles.newBookingButton}>
-        <Text style={styles.newBookingIcon}>+</Text>
+        <AppIcon
+          color={lightColors.primaryForeground.hex}
+          name="plus"
+          size={31}
+          strokeWidth={2.6}
+        />
       </View>
       {children}
     </Pressable>
@@ -70,12 +73,14 @@ function NewBookingTabButton({
 
 export default function TabsLayout() {
   const { profile } = useAuth();
+  const menuSettings = useAppMenuSettings();
   const [showOptIn, setShowOptIn] = useState(false);
+  const bookingTabsVisible = hasAnyBookingMenu(menuSettings);
 
   useEffect(() => {
     // 로그인 후 최초 1회만 opt-in 다이얼로그 표시
-    hasNotificationOptIn().then((optedIn) => {
-      if (!optedIn && profile?.id) {
+    getNotificationOptInStatus().then((optInStatus) => {
+      if (optInStatus === null && profile?.id) {
         setShowOptIn(true);
       }
     });
@@ -120,22 +125,29 @@ export default function TabsLayout() {
         options={{
           title: '홈',
           tabBarIcon: ({ color, focused, size }) => (
-            <TabIcon color={color} focused={focused} glyph="H" size={size} />
+            <TabIcon color={color} focused={focused} name="home" size={size} />
           ),
         }}
       />
       <Tabs.Screen
         name="booking"
         options={{
+          href: bookingTabsVisible ? undefined : null,
           title: '예약',
           tabBarIcon: ({ color, focused, size }) => (
-            <TabIcon color={color} focused={focused} glyph="R" size={size} />
+            <TabIcon
+              color={color}
+              focused={focused}
+              name="calendar-check"
+              size={size}
+            />
           ),
         }}
       />
       <Tabs.Screen
         name="new-booking"
         options={{
+          href: bookingTabsVisible ? undefined : null,
           title: '',
           tabBarButton: ({
             accessibilityState,
@@ -160,9 +172,15 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="shop"
         options={{
+          href: menuSettings.shop ? undefined : null,
           title: '샵',
           tabBarIcon: ({ color, focused, size }) => (
-            <TabIcon color={color} focused={focused} glyph="S" size={size} />
+            <TabIcon
+              color={color}
+              focused={focused}
+              name="shopping-bag"
+              size={size}
+            />
           ),
         }}
       />
@@ -171,7 +189,7 @@ export default function TabsLayout() {
         options={{
           title: '마이',
           tabBarIcon: ({ color, focused, size }) => (
-            <TabIcon color={color} focused={focused} glyph="M" size={size} />
+            <TabIcon color={color} focused={focused} name="user" size={size} />
           ),
         }}
       />
@@ -180,6 +198,11 @@ export default function TabsLayout() {
       <Tabs.Screen name="notification-settings" options={{ href: null }} />
       <Tabs.Screen name="notifications" options={{ href: null }} />
       <Tabs.Screen name="booking-detail" options={{ href: null }} />
+      <Tabs.Screen name="racket-detail" options={{ href: null }} />
+      <Tabs.Screen name="shop-product-detail" options={{ href: null }} />
+      <Tabs.Screen name="shop-wishlist" options={{ href: null }} />
+      <Tabs.Screen name="orders" options={{ href: null }} />
+      <Tabs.Screen name="string-detail" options={{ href: null }} />
       <Tabs.Screen name="account-deletion" options={{ href: null }} />
       <Tabs.Screen name="string-catalog" options={{ href: null }} />
       <Tabs.Screen name="string-setups" options={{ href: null }} />
@@ -203,12 +226,6 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.fontSize.caption,
     fontWeight: theme.typography.fontWeight.medium,
   },
-  tabIcon: {
-    fontFamily: theme.typography.fontFamily.display,
-    fontWeight: theme.typography.fontWeight.bold,
-    lineHeight: 28,
-    textAlign: 'center',
-  },
   newBookingButtonWrapper: {
     alignItems: 'center',
     flex: 1,
@@ -229,12 +246,6 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     width: 56,
     elevation: 4,
-  },
-  newBookingIcon: {
-    color: lightColors.primaryForeground.hex,
-    fontSize: 30,
-    fontWeight: theme.typography.fontWeight.semibold,
-    lineHeight: 32,
   },
   pressed: {
     opacity: theme.opacity.pressed,

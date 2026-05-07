@@ -6,6 +6,13 @@ const mockAddAddress = jest.fn();
 const mockUpdateAddress = jest.fn();
 const mockDeleteAddress = jest.fn();
 const mockSetDefaultAddress = jest.fn();
+const mockRouterBack = jest.fn();
+
+jest.mock('expo-router', () => ({
+  useRouter: () => ({
+    back: mockRouterBack,
+  }),
+}));
 
 const address = {
   id: 'address-1',

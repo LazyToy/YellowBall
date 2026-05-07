@@ -1,12 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Pressable, StyleSheet, Switch, View } from 'react-native';
 
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
+import { ConfirmDialog, FeedbackDialog } from '@/components/FeedbackDialog';
 import { Input } from '@/components/Input';
+import { BackButton } from '@/components/MobileUI';
+import { RefreshableScrollView } from '@/components/PageRefresh';
 import { Typography } from '@/components/Typography';
 import { lightColors, theme } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
+import { useResetOnBlur } from '@/hooks/useResetOnBlur';
 import { getRackets } from '@/services/racketService';
 import { getActiveStrings } from '@/services/stringCatalogService';
 import {
@@ -24,6 +29,7 @@ import type {
 const parseTension = (value: string) => Number(value.trim());
 
 export default function StringSetupsScreen() {
+  const router = useRouter();
   const { profile } = useAuth();
   const profileId = profile?.id;
   const [rackets, setRackets] = useState<UserRacket[]>([]);
@@ -39,6 +45,11 @@ export default function StringSetupsScreen() {
   const [editingSetupId, setEditingSetupId] = useState<string | null>(null);
   const [message, setMessage] = useState<string>();
   const [isBusy, setIsBusy] = useState(false);
+  const [successDialog, setSuccessDialog] = useState<{
+    title: string;
+    message?: string;
+  } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<UserStringSetup | null>(null);
 
   const loadData = useCallback(async () => {
     if (!profileId) {
@@ -79,15 +90,26 @@ export default function StringSetupsScreen() {
     return names;
   }, [rackets]);
 
-  const clearForm = () => {
+  const clearForm = useCallback(() => {
     setEditingSetupId(null);
+    setSelectedRacketId(rackets[0]?.id || '');
     setTensionMain('48');
     setTensionCross('48');
     setIsHybrid(false);
     setMemo('');
     setMainStringId(strings[0]?.id || '');
     setCrossStringId(strings[0]?.id || '');
-  };
+  }, [rackets, strings]);
+
+  const resetScreen = useCallback(() => {
+    clearForm();
+    setMessage(undefined);
+    setIsBusy(false);
+    setSuccessDialog(null);
+    setDeleteTarget(null);
+  }, [clearForm]);
+
+  useResetOnBlur(resetScreen);
 
   const startEditing = (setup: UserStringSetup) => {
     setEditingSetupId(setup.id);
@@ -113,6 +135,7 @@ export default function StringSetupsScreen() {
 
     try {
       setIsBusy(true);
+      const wasEditing = editingSetupId !== null;
       const payload = {
         racket_id: selectedRacketId,
         main_string_id: mainStringId,
@@ -134,7 +157,10 @@ export default function StringSetupsScreen() {
 
       clearForm();
       await loadData();
-      setMessage('String setup saved.');
+      setSuccessDialog({
+        title: wasEditing ? '스트링 설정이 수정되었습니다' : '스트링 설정이 등록되었습니다',
+        message: '확인을 누르면 저장된 설정 목록을 확인할 수 있습니다.',
+      });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Unable to save string setup.');
     } finally {
@@ -142,10 +168,49 @@ export default function StringSetupsScreen() {
     }
   };
 
+  const handleDeleteSetup = async () => {
+    if (!deleteTarget) {
+      return;
+    }
+
+    try {
+      await deleteSetup(deleteTarget.id);
+      setDeleteTarget(null);
+      await loadData();
+      setSuccessDialog({
+        title: '스트링 설정이 삭제되었습니다',
+        message: '확인을 누르면 저장된 설정 목록을 확인할 수 있습니다.',
+      });
+    } catch {
+      setMessage('Unable to delete string setup.');
+    }
+  };
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <RefreshableScrollView contentContainerStyle={styles.container}>
+      <FeedbackDialog
+        visible={successDialog !== null}
+        title={successDialog?.title ?? ''}
+        message={successDialog?.message}
+        onConfirm={() => setSuccessDialog(null)}
+      />
+      <ConfirmDialog
+        visible={deleteTarget !== null}
+        title="스트링 설정을 삭제할까요?"
+        message={
+          deleteTarget
+            ? `${deleteTarget.tension_main}/${deleteTarget.tension_cross} lbs`
+            : undefined
+        }
+        confirmLabel="삭제"
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={handleDeleteSetup}
+      />
       <View style={styles.header}>
-        <Typography variant="h1">String Setups</Typography>
+        <View style={styles.titleRow}>
+          <BackButton onPress={() => router.back()} />
+          <Typography variant="h1">String Setups</Typography>
+        </View>
         <Typography variant="body" style={styles.muted}>
           Save string and tension combinations for your rackets.
         </Typography>
@@ -249,11 +314,7 @@ export default function StringSetupsScreen() {
                 Edit
               </Button>
               <Button
-                onPress={() =>
-                  deleteSetup(setup.id)
-                    .then(loadData)
-                    .catch(() => setMessage('Unable to delete string setup.'))
-                }
+                onPress={() => setDeleteTarget(setup)}
                 size="sm"
                 variant="outline"
               >
@@ -269,7 +330,7 @@ export default function StringSetupsScreen() {
           {message}
         </Typography>
       ) : null}
-    </ScrollView>
+    </RefreshableScrollView>
   );
 }
 
@@ -339,6 +400,11 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing[12],
   },
   header: {
+    gap: theme.spacing[2],
+  },
+  titleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
     gap: theme.spacing[2],
   },
   section: {

@@ -40,7 +40,7 @@ describe('booking status utilities', () => {
 
   test('서비스 예약 상태 전환은 유효한 경로만 허용한다', () => {
     expect(isValidServiceBookingTransition('requested', 'approved')).toBe(true);
-    expect(isValidServiceBookingTransition('requested', 'completed')).toBe(false);
+    expect(isValidServiceBookingTransition('requested', 'completed')).toBe(true);
     expect(isValidServiceBookingTransition('in_progress', 'completed')).toBe(true);
     expect(isValidServiceBookingTransition('done', 'approved')).toBe(false);
   });

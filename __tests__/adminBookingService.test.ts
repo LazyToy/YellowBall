@@ -142,7 +142,7 @@ describe('adminBookingService', () => {
     } as never);
 
     await expect(
-      invalidService.updateStatus('booking-1', 'admin-1', 'completed'),
+      invalidService.updateStatus('booking-1', 'admin-1', 'done'),
     ).rejects.toThrow('허용되지 않는 예약 상태 전환입니다.');
 
     const deniedService = createAdminBookingService({

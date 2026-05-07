@@ -1,20 +1,25 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { useLocalSearchParams } from 'expo-router';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { StyleSheet, View } from 'react-native';
 
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
+import { BackButton } from '@/components/MobileUI';
+import { RefreshableScrollView } from '@/components/PageRefresh';
 import { Typography } from '@/components/Typography';
 import { lightColors, theme } from '@/constants/theme';
 import { cancelBooking, getBookingDetail } from '@/services/bookingService';
 import type { ServiceBooking } from '@/types/database';
 import {
+  getBookingAddressLabel,
+  getBookingDeliveryMethodLabel,
   getBookingRacketLabel,
   getBookingSlotLabel,
   getBookingStringLabel,
 } from '@/utils/bookingDisplay';
 import {
+  getServiceBookingWorkStatus,
   serviceBookingStatusLabels,
   serviceBookingStatusVariant,
   serviceBookingTimeline,
@@ -24,11 +29,12 @@ import {
   canRequestCancellation,
   getRemainingTime,
 } from '@/utils/cancellationPolicy';
+import { formatKstDateTime } from '@/utils/kstDateTime';
 
-const formatDateTime = (value: string) =>
-  new Date(value).toISOString().slice(0, 16).replace('T', ' ');
+const formatDateTime = (value: string) => formatKstDateTime(value);
 
 export default function BookingDetailScreen() {
+  const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const [booking, setBooking] = useState<ServiceBooking | null>(null);
   const [message, setMessage] = useState<string>();
@@ -64,7 +70,7 @@ export default function BookingDetailScreen() {
     try {
       setIsCancelling(true);
       const result = await cancelBooking(booking.id, booking.user_id);
-      setBooking(result.booking);
+      await loadBooking();
       setMessage(
         result.requiresAdminApproval
           ? '취소 요청을 등록했습니다. 관리자가 확인한 뒤 처리됩니다.'
@@ -84,6 +90,10 @@ export default function BookingDetailScreen() {
   if (!booking) {
     return (
       <View style={styles.container}>
+        <View style={styles.titleRow}>
+          <BackButton onPress={() => router.back()} />
+          <Typography variant="h1">예약 상세</Typography>
+        </View>
         <Typography accessibilityRole="alert" variant="body" style={styles.muted}>
           {message ?? '예약을 찾지 못했습니다.'}
         </Typography>
@@ -94,12 +104,16 @@ export default function BookingDetailScreen() {
   const cancellationRemaining = getRemainingTime(booking);
   const canRequestCancel = canRequestCancellation(booking);
   const freeCancellation = canCancelFreely(booking);
+  const addressLabel = getBookingAddressLabel(booking);
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <RefreshableScrollView contentContainerStyle={styles.container}>
       <View style={styles.header}>
         <View style={styles.flex}>
-          <Typography variant="h1">예약 상세</Typography>
+          <View style={styles.titleRow}>
+            <BackButton onPress={() => router.back()} />
+            <Typography variant="h1">예약 상세</Typography>
+          </View>
           <Typography variant="caption" style={styles.muted}>
             #{booking.id.slice(0, 8)}
           </Typography>
@@ -127,7 +141,15 @@ export default function BookingDetailScreen() {
           접수 {formatDateTime(booking.created_at)}
         </Typography>
         <Typography variant="caption" style={styles.muted}>
-          수령 방식 {booking.delivery_method}
+          수령 방식 {getBookingDeliveryMethodLabel(booking)}
+        </Typography>
+        {addressLabel !== '-' ? (
+          <Typography variant="caption" style={styles.muted}>
+            배송지 {addressLabel}
+          </Typography>
+        ) : null}
+        <Typography variant="caption" style={styles.muted}>
+          최종 수정 {formatDateTime(booking.updated_at)}
         </Typography>
       </View>
 
@@ -154,9 +176,10 @@ export default function BookingDetailScreen() {
         <Typography variant="h2">상태 타임라인</Typography>
         <View style={styles.timeline}>
           {serviceBookingTimeline.map((status) => {
+            const currentStatus = getServiceBookingWorkStatus(booking.status);
             const active =
               serviceBookingTimeline.indexOf(status) <=
-              serviceBookingTimeline.indexOf(booking.status);
+              serviceBookingTimeline.indexOf(currentStatus);
 
             return (
               <Badge key={status} variant={active ? 'secondary' : 'outline'}>
@@ -182,7 +205,7 @@ export default function BookingDetailScreen() {
           {message}
         </Typography>
       ) : null}
-    </ScrollView>
+    </RefreshableScrollView>
   );
 }
 
@@ -199,6 +222,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: theme.spacing[3],
     justifyContent: 'space-between',
+  },
+  titleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing[2],
   },
   card: {
     backgroundColor: lightColors.card.hex,

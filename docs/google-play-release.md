@@ -5,7 +5,7 @@
 ## 완료된 설정
 
 - Android application id: `com.yellowball.mobile`
-- Android versionCode: `1`
+- Android versionCode: `2`
 - EAS production build profile: `eas.json`의 `build.production`
 - Android production artifact type: `app-bundle`
 - EAS submit production profile: 내부 트랙, draft 릴리스
@@ -40,6 +40,6 @@
 ## 계정 삭제 정책 (완료)
 
 - 30일 대기 기간 후 자동 개인정보 삭제 (`024_account_deletion_cleanup.sql`)
+- pg_cron 일일 스케줄 등록 (`026_schedule_account_cleanup_cron.sql`)
 - Privacy Policy에 30일 삭제 정책 명시 (`docs/legal/privacy-policy.md`)
 - 앱 내 계정 삭제 화면에 30일 안내 표시 (`account-deletion.tsx`)
-

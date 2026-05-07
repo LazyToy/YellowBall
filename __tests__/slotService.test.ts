@@ -42,13 +42,17 @@ const closedDateQuery = (isClosed = false) => {
   return { select };
 };
 
-const scheduleQuery = () => {
+const scheduleQuery = ({
+  closeTime = '18:00:00',
+  isClosed = false,
+  openTime = '09:00:00',
+} = {}) => {
   const single = jest.fn().mockResolvedValue({
     data: {
       day_of_week: 1,
-      open_time: '09:00:00',
-      close_time: '18:00:00',
-      is_closed: false,
+      open_time: openTime,
+      close_time: closeTime,
+      is_closed: isClosed,
     },
     error: null,
   });
@@ -83,12 +87,12 @@ describe('slotService', () => {
       expect.arrayContaining([
         expect.objectContaining({
           service_type: 'stringing',
-          start_time: '2026-05-04T09:00:00.000Z',
-          end_time: '2026-05-04T10:00:00.000Z',
+          start_time: '2026-05-04T00:00:00.000Z',
+          end_time: '2026-05-04T01:00:00.000Z',
         }),
         expect.objectContaining({
-          start_time: '2026-05-04T17:00:00.000Z',
-          end_time: '2026-05-04T18:00:00.000Z',
+          start_time: '2026-05-04T08:00:00.000Z',
+          end_time: '2026-05-04T09:00:00.000Z',
         }),
       ]),
       {
@@ -122,26 +126,51 @@ describe('slotService', () => {
     ).rejects.toThrow('Only admins can manage booking slots.');
   });
 
-  test('getAvailableSlots filters by date, type, block state, and capacity', async () => {
+  test('getAvailableSlots filters by date, type, block state, schedule hours, and client-side capacity', async () => {
+    const futureSlot = {
+      ...slot,
+      start_time: '2099-05-04T00:00:00.000Z',
+      end_time: '2099-05-04T01:00:00.000Z',
+    };
+    const outsideHoursSlot = { ...futureSlot, id: 'slot-outside-hours' };
+    const withinHoursSlot = {
+      ...futureSlot,
+      id: 'slot-within-hours',
+      start_time: '2099-05-04T01:00:00.000Z',
+      end_time: '2099-05-04T02:00:00.000Z',
+    };
+    const fullSlot = { ...withinHoursSlot, id: 'slot-full', reserved_count: 1, capacity: 1 };
     const query = {
       select: jest.fn(() => query),
       eq: jest.fn(() => query),
       gte: jest.fn(() => query),
       lt: jest.fn(() => query),
-      filter: jest.fn(() => query),
-      order: jest.fn().mockResolvedValue({ data: [slot], error: null }),
+      order: jest.fn().mockResolvedValue({
+        data: [outsideHoursSlot, withinHoursSlot, fullSlot],
+        error: null,
+      }),
     };
-    const service = createSlotService({ from: jest.fn(() => query) } as never);
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
+    const from = jest
+      .fn()
+      .mockReturnValueOnce(scheduleQuery({ openTime: '10:00:00', closeTime: '12:00:00' }))
+      .mockReturnValueOnce(query);
+    const service = createSlotService({ from, rpc } as never);
 
-    await expect(service.getAvailableSlots('2026-05-04', 'stringing')).resolves.toEqual([
-      slot,
+    await expect(service.getAvailableSlots('2099-05-04', 'stringing')).resolves.toEqual([
+      withinHoursSlot,
     ]);
 
+    expect(rpc).toHaveBeenCalledWith('ensure_booking_slots_for_date', {
+      p_date: '2099-05-04',
+      p_service_type: 'stringing',
+      p_duration_min: 60,
+      p_capacity: 1,
+    });
     expect(query.eq).toHaveBeenCalledWith('service_type', 'stringing');
     expect(query.eq).toHaveBeenCalledWith('is_blocked', false);
-    expect(query.gte).toHaveBeenCalledWith('start_time', '2026-05-04T00:00:00.000Z');
-    expect(query.lt).toHaveBeenCalledWith('start_time', '2026-05-05T00:00:00.000Z');
-    expect(query.filter).toHaveBeenCalledWith('reserved_count', 'lt', 'capacity');
+    expect(query.gte).toHaveBeenCalledWith('start_time', '2099-05-03T15:00:00.000Z');
+    expect(query.lt).toHaveBeenCalledWith('start_time', '2099-05-04T15:00:00.000Z');
   });
 
   test('getSlots returns blocked and open slots for admin slot management', async () => {
@@ -165,6 +194,68 @@ describe('slotService', () => {
     expect(query.eq).toHaveBeenCalledWith('service_type', 'stringing');
     expect(query.eq).not.toHaveBeenCalledWith('is_blocked', false);
     expect(query).not.toHaveProperty('filter');
+  });
+
+  test('getBookingSlotsForDate prepares and returns all visible slots including unavailable ones', async () => {
+    const availableSlot = {
+      ...slot,
+      id: 'slot-open',
+      start_time: '2099-05-04T00:00:00.000Z',
+      end_time: '2099-05-04T01:00:00.000Z',
+    };
+    const fullSlot = {
+      ...availableSlot,
+      id: 'slot-full',
+      start_time: '2099-05-04T01:00:00.000Z',
+      end_time: '2099-05-04T02:00:00.000Z',
+      reserved_count: 1,
+      capacity: 1,
+    };
+    const blockedSlot = {
+      ...availableSlot,
+      id: 'slot-blocked',
+      start_time: '2099-05-04T02:00:00.000Z',
+      end_time: '2099-05-04T03:00:00.000Z',
+      is_blocked: true,
+    };
+    const outsideHoursSlot = {
+      ...availableSlot,
+      id: 'slot-outside-hours',
+      start_time: '2099-05-04T08:00:00.000Z',
+      end_time: '2099-05-04T09:00:00.000Z',
+    };
+    const query = {
+      select: jest.fn(() => query),
+      eq: jest.fn(() => query),
+      gte: jest.fn(() => query),
+      lt: jest.fn(() => query),
+      order: jest.fn().mockResolvedValue({
+        data: [availableSlot, fullSlot, blockedSlot, outsideHoursSlot],
+        error: null,
+      }),
+    };
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
+    const from = jest
+      .fn()
+      .mockReturnValueOnce(closedDateQuery(false))
+      .mockReturnValueOnce(scheduleQuery({ openTime: '09:00:00', closeTime: '12:00:00' }))
+      .mockReturnValueOnce(query);
+    const service = createSlotService({ from, rpc } as never);
+
+    await expect(service.getBookingSlotsForDate('2099-05-04', 'stringing')).resolves.toEqual([
+      availableSlot,
+      fullSlot,
+      blockedSlot,
+    ]);
+
+    expect(rpc).toHaveBeenCalledWith('ensure_booking_slots_for_date', {
+      p_date: '2099-05-04',
+      p_service_type: 'stringing',
+      p_duration_min: 60,
+      p_capacity: 1,
+    });
+    expect(query.eq).toHaveBeenCalledWith('service_type', 'stringing');
+    expect(query.eq).not.toHaveBeenCalledWith('is_blocked', false);
   });
 
   test('blockSlot and unblockSlot update blocked state with admin checks', async () => {

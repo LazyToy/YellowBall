@@ -6,8 +6,16 @@ import type {
   BookingSlot,
   Database,
 } from '@/types/database';
+import {
+  formatKstDateKey,
+  formatKstTime,
+  isPastKstDateKey,
+  isPastIsoDateTime,
+  kstDateRangeToIso,
+  kstDateTimeToIso,
+} from '@/utils/kstDateTime';
 
-type SlotClient = Pick<SupabaseClient<Database>, 'from'>;
+type SlotClient = Pick<SupabaseClient<Database>, 'from' | 'rpc'>;
 
 type ScheduleRow = {
   day_of_week: DayOfWeek;
@@ -33,8 +41,6 @@ const toServiceError = (message: string, error: unknown) => {
 
   return new Error(message);
 };
-
-const pad = (value: number) => String(value).padStart(2, '0');
 
 const validateDate = (date: string) => {
   if (!datePattern.test(date)) {
@@ -70,23 +76,34 @@ const timeToMinutes = (value: string) => {
   return Number(hours) * 60 + Number(minutes);
 };
 
-const localSlotIso = (date: string, totalMinutes: number) => {
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-
-  return `${date}T${pad(hours)}:${pad(minutes)}:00.000Z`;
-};
-
-const nextDate = (date: string) => {
-  const parsed = new Date(`${date}T00:00:00.000Z`);
-
-  parsed.setUTCDate(parsed.getUTCDate() + 1);
-
-  return parsed.toISOString().slice(0, 10);
-};
+const toShortTime = (value: string) => normalizeTime(value).slice(0, 5);
 
 const dayOfWeek = (date: string): DayOfWeek =>
   new Date(`${date}T00:00:00.000Z`).getUTCDay() as DayOfWeek;
+
+const isSlotWithinSchedule = (
+  date: string,
+  slot: BookingSlot,
+  schedule: ScheduleRow,
+) => {
+  if (schedule.is_closed) {
+    return false;
+  }
+
+  const openTime = toShortTime(schedule.open_time);
+  const closeTime = toShortTime(schedule.close_time);
+  const startDate = formatKstDateKey(new Date(slot.start_time));
+  const endDate = formatKstDateKey(new Date(slot.end_time));
+  const startTime = formatKstTime(slot.start_time);
+  const endTime = formatKstTime(slot.end_time);
+
+  return (
+    startDate === date &&
+    endDate === date &&
+    startTime >= openTime &&
+    endTime <= closeTime
+  );
+};
 
 const assertAdmin = async (client: SlotClient, actorId: string) => {
   const { data, error } = await client
@@ -163,8 +180,8 @@ const buildSlotRows = (
   for (let start = open; start + durationMin <= close; start += durationMin) {
     rows.push({
       service_type: serviceType,
-      start_time: localSlotIso(date, start),
-      end_time: localSlotIso(date, start + durationMin),
+      start_time: kstDateTimeToIso(date, start),
+      end_time: kstDateTimeToIso(date, start + durationMin),
       capacity,
       reserved_count: 0,
       is_blocked: false,
@@ -222,21 +239,98 @@ export const createSlotService = (client: SlotClient) => ({
     validateDate(date);
     validateServiceType(serviceType);
 
+    if (isPastKstDateKey(date)) {
+      return [];
+    }
+
+    const { error: ensureError } = await client.rpc('ensure_booking_slots_for_date', {
+      p_date: date,
+      p_service_type: serviceType,
+      p_duration_min: 60,
+      p_capacity: 1,
+    });
+
+    if (ensureError) {
+      throw toServiceError('예약 가능한 시간을 준비하지 못했습니다.', ensureError);
+    }
+
+    const schedule = await getScheduleForDate(client, date);
+
+    if (schedule.is_closed) {
+      return [];
+    }
+
+    const range = kstDateRangeToIso(date);
+    const lowerBound =
+      date === formatKstDateKey() && new Date().toISOString() > range.start
+        ? new Date().toISOString()
+        : range.start;
+
     const { data, error } = await client
       .from('booking_slots')
       .select('*')
       .eq('service_type', serviceType)
       .eq('is_blocked', false)
-      .gte('start_time', `${date}T00:00:00.000Z`)
-      .lt('start_time', `${nextDate(date)}T00:00:00.000Z`)
-      .filter('reserved_count', 'lt', 'capacity')
+      .gte('start_time', lowerBound)
+      .lt('start_time', range.end)
       .order('start_time', { ascending: true });
 
     if (error) {
       throw toServiceError('Unable to load available booking slots.', error);
     }
 
-    return data ?? [];
+    return (data ?? []).filter(
+      (slot) =>
+        slot.reserved_count < slot.capacity &&
+        !isPastIsoDateTime(slot.start_time) &&
+        isSlotWithinSchedule(date, slot, schedule),
+    );
+  },
+
+  async getBookingSlotsForDate(
+    date: string,
+    serviceType: BookingServiceType,
+  ): Promise<BookingSlot[]> {
+    validateDate(date);
+    validateServiceType(serviceType);
+
+    const { error: ensureError } = await client.rpc('ensure_booking_slots_for_date', {
+      p_date: date,
+      p_service_type: serviceType,
+      p_duration_min: 60,
+      p_capacity: 1,
+    });
+
+    if (ensureError) {
+      throw toServiceError('예약 시간을 준비하지 못했습니다.', ensureError);
+    }
+
+    if (await isClosedDate(client, date)) {
+      return [];
+    }
+
+    const schedule = await getScheduleForDate(client, date);
+
+    if (schedule.is_closed) {
+      return [];
+    }
+
+    const range = kstDateRangeToIso(date);
+    const { data, error } = await client
+      .from('booking_slots')
+      .select('*')
+      .eq('service_type', serviceType)
+      .gte('start_time', range.start)
+      .lt('start_time', range.end)
+      .order('start_time', { ascending: true });
+
+    if (error) {
+      throw toServiceError('Unable to load booking slots.', error);
+    }
+
+    return (data ?? []).filter((slot) =>
+      isSlotWithinSchedule(date, slot, schedule),
+    );
   },
 
   async getSlots(
@@ -246,12 +340,13 @@ export const createSlotService = (client: SlotClient) => ({
     validateDate(date);
     validateServiceType(serviceType);
 
+    const range = kstDateRangeToIso(date);
     const { data, error } = await client
       .from('booking_slots')
       .select('*')
       .eq('service_type', serviceType)
-      .gte('start_time', `${date}T00:00:00.000Z`)
-      .lt('start_time', `${nextDate(date)}T00:00:00.000Z`)
+      .gte('start_time', range.start)
+      .lt('start_time', range.end)
       .order('start_time', { ascending: true });
 
     if (error) {
@@ -331,6 +426,14 @@ export const getAvailableSlots = (
 ) =>
   getDefaultSlotService().then((service) =>
     service.getAvailableSlots(date, serviceType),
+  );
+
+export const getBookingSlotsForDate = (
+  date: string,
+  serviceType: BookingServiceType,
+) =>
+  getDefaultSlotService().then((service) =>
+    service.getBookingSlotsForDate(date, serviceType),
   );
 
 export const getSlots = (date: string, serviceType: BookingServiceType) =>

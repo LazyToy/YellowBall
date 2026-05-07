@@ -189,4 +189,31 @@ describe('useAuth', () => {
 
     unmount();
   });
+
+  test('저장된 세션의 프로필이 deleted이면 자동 로그인하지 않고 세션을 삭제한다', async () => {
+    const {
+      resetAuthStateForTest,
+      syncAuthSession,
+      useAuth,
+    } = require('../src/hooks/useAuth');
+    resetAuthStateForTest();
+    mockGetProfile.mockResolvedValue({
+      ...profile,
+      status: 'deleted',
+    });
+
+    const { result, unmount } = renderHook(() => useAuth());
+
+    await act(async () => {
+      await syncAuthSession(session);
+    });
+
+    await waitFor(() => expect(result.current.session).toBeNull());
+    expect(mockServiceSignOut).toHaveBeenCalledTimes(1);
+    expect(mockResetAllZustandStores).toHaveBeenCalledTimes(1);
+    expect(result.current.profile).toBeNull();
+    expect(result.current.errorMessage).toBe('탈퇴가 완료된 계정입니다.');
+
+    unmount();
+  });
 });

@@ -35,11 +35,14 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
     errorStyle,
     style,
     accessibilityLabel,
+    onBlur,
+    onFocus,
     ...textInputProps
   },
   ref,
 ) {
   const [passwordVisible, setPasswordVisible] = useState(false);
+  const [focused, setFocused] = useState(false);
   const canTogglePassword = Boolean(secureTextEntry);
   const isSecureEntry = canTogglePassword && !passwordVisible;
   const invalid = Boolean(error);
@@ -52,6 +55,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
           styles.inputWrap,
           sharedControlStyles.border,
           sharedControlStyles.mediumHeight,
+          focused && editable && styles.inputWrapFocused,
           invalid && styles.inputWrapInvalid,
           !editable && sharedControlStyles.disabled,
         ]}
@@ -59,10 +63,19 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
         <TextInput
           accessibilityLabel={accessibilityLabel ?? label}
           editable={editable}
+          onBlur={(event) => {
+            setFocused(false);
+            onBlur?.(event);
+          }}
           placeholderTextColor={lightColors.mutedForeground.hex}
+          onFocus={(event) => {
+            setFocused(true);
+            onFocus?.(event);
+          }}
           ref={ref}
           secureTextEntry={isSecureEntry}
           style={[styles.input, inputStyle, style]}
+          underlineColorAndroid="transparent"
           {...textInputProps}
         />
         {canTogglePassword ? (
@@ -98,12 +111,14 @@ const styles = StyleSheet.create({
   },
   inputWrap: {
     alignItems: 'center',
-    backgroundColor: 'transparent',
+    backgroundColor: lightColors.card.hex,
     borderColor: lightColors.input.hex,
     borderRadius: theme.borderRadius.md,
     flexDirection: 'row',
     paddingHorizontal: theme.spacing[3],
-    ...theme.shadow.card,
+  },
+  inputWrapFocused: {
+    borderColor: lightColors.primary.hex,
   },
   inputWrapInvalid: {
     borderColor: lightColors.destructive.hex,

@@ -1,6 +1,14 @@
-import type { ServiceBooking } from '@/types/database';
+import type { ServiceBooking, ServiceDeliveryMethod } from '@/types/database';
+import { formatKstDateTime } from './kstDateTime';
 
 type BookingRelations = ServiceBooking & {
+  addresses?: {
+    address_line1?: string | null;
+    address_line2?: string | null;
+    phone?: string | null;
+    postal_code?: string | null;
+    recipient_name?: string | null;
+  } | null;
   user_rackets?: {
     brand?: string | null;
     model?: string | null;
@@ -22,12 +30,14 @@ type BookingRelations = ServiceBooking & {
 const joinParts = (...parts: (string | null | undefined)[]) =>
   parts.filter(Boolean).join(' ');
 
-export const formatBookingDateTime = (value?: string | null) => {
-  if (!value) {
-    return '-';
-  }
+const deliveryMethodLabels: Record<ServiceDeliveryMethod, string> = {
+  local_quick: '퀵 배송',
+  parcel: '택배',
+  store_pickup: '매장 방문',
+};
 
-  return new Date(value).toISOString().slice(0, 16).replace('T', ' ');
+export const formatBookingDateTime = (value?: string | null) => {
+  return formatKstDateTime(value);
 };
 
 export const getBookingRacketLabel = (booking: ServiceBooking) => {
@@ -75,4 +85,23 @@ export const getBookingSlotLabel = (booking: ServiceBooking) => {
   }
 
   return `${formatBookingDateTime(startTime)} - ${formatBookingDateTime(endTime)}`;
+};
+
+export const getBookingDeliveryMethodLabel = (booking: ServiceBooking) =>
+  deliveryMethodLabels[booking.delivery_method] ?? booking.delivery_method;
+
+export const getBookingAddressLabel = (booking: ServiceBooking) => {
+  const address = (booking as BookingRelations).addresses;
+
+  if (!address) {
+    return '-';
+  }
+
+  return joinParts(
+    address.recipient_name,
+    address.phone,
+    address.postal_code ? `(${address.postal_code})` : null,
+    address.address_line1,
+    address.address_line2,
+  );
 };

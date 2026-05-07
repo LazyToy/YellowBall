@@ -48,12 +48,19 @@ export type MyBookingFilters = {
   statuses?: ServiceBookingStatus[];
 };
 
+export type ServiceBookingWithMeta = ServiceBooking & {
+  has_cancel_request?: boolean;
+};
+
 export type CancelBookingResult = {
   booking: ServiceBooking;
   cancelled: boolean;
   requiresAdminApproval: boolean;
   cancellationDeadline: string | null;
 };
+
+const serviceBookingDetailSelect =
+  '*, addresses(*), user_rackets(*), booking_slots(*), main_string:string_catalog!service_bookings_main_string_id_fkey(*), cross_string:string_catalog!service_bookings_cross_string_id_fkey(*)';
 
 const toServiceError = (message: string, error: unknown) => {
   if (
@@ -70,6 +77,37 @@ const toServiceError = (message: string, error: unknown) => {
 
 const normalizeRpcRow = <T>(data: T | T[] | null): T | null =>
   Array.isArray(data) ? data[0] ?? null : data;
+
+const attachCancelRequestState = async (
+  client: BookingClient,
+  bookings: ServiceBooking[],
+): Promise<ServiceBookingWithMeta[]> => {
+  const bookingIds = bookings.map((booking) => booking.id);
+
+  if (bookingIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await client
+    .from('booking_status_logs')
+    .select('booking_id')
+    .eq('booking_type', 'service')
+    .eq('new_status', 'cancel_requested')
+    .in('booking_id', bookingIds);
+
+  if (error) {
+    throw toServiceError('취소 요청 상태를 불러오지 못했습니다.', error);
+  }
+
+  const cancelRequestedIds = new Set(
+    (data ?? []).map((log) => log.booking_id),
+  );
+
+  return bookings.map((booking) => ({
+    ...booking,
+    has_cancel_request: cancelRequestedIds.has(booking.id),
+  }));
+};
 
 const getProfileStatus = async (client: BookingClient, userId: string) => {
   const { data, error } = await client
@@ -135,6 +173,30 @@ const getSlot = async (
   return data;
 };
 
+const notifyBookingCreated = async (
+  notificationService: BookingNotificationService,
+  booking: ServiceBooking,
+) => {
+  await Promise.allSettled([
+    notificationService.createStatusNotification({
+      userId: booking.user_id,
+      bookingId: booking.id,
+      bookingType: 'service',
+      status: booking.status,
+    }),
+    notificationService.notifyAdmins({
+      title: '새로운 예약',
+      body: '새로운 스트링 예약이 접수되었습니다.',
+      notificationType: 'admin_new_booking',
+      data: {
+        bookingId: booking.id,
+        bookingType: 'service',
+        status: booking.status,
+      },
+    }),
+  ]);
+};
+
 export const createBookingService = (
   client: BookingClient,
   notificationService: BookingNotificationService =
@@ -174,22 +236,7 @@ export const createBookingService = (
       throw toServiceError('예약을 생성하지 못했습니다.', error);
     }
 
-    await notificationService.createStatusNotification({
-      userId: booking.user_id,
-      bookingId: booking.id,
-      bookingType: 'service',
-      status: booking.status,
-    });
-    await notificationService.notifyAdmins({
-      title: '새로운 예약',
-      body: '새로운 스트링 예약이 접수되었습니다.',
-      notificationType: 'admin_new_booking',
-      data: {
-        bookingId: booking.id,
-        bookingType: 'service',
-        status: booking.status,
-      },
-    });
+    await notifyBookingCreated(notificationService, booking);
 
     return booking;
   },
@@ -197,12 +244,10 @@ export const createBookingService = (
   async getMyBookings(
     userId: string,
     filters: MyBookingFilters = {},
-  ): Promise<ServiceBooking[]> {
+  ): Promise<ServiceBookingWithMeta[]> {
     let query = client
       .from('service_bookings')
-      .select(
-        '*, user_rackets(*), booking_slots(*), main_string:string_catalog!service_bookings_main_string_id_fkey(*), cross_string:string_catalog!service_bookings_cross_string_id_fkey(*)',
-      )
+      .select(serviceBookingDetailSelect)
       .eq('user_id', userId);
 
     if (filters.statuses?.length) {
@@ -216,15 +261,13 @@ export const createBookingService = (
       throw toServiceError('예약 목록을 불러오지 못했습니다.', error);
     }
 
-    return (data ?? []) as ServiceBooking[];
+    return attachCancelRequestState(client, (data ?? []) as ServiceBooking[]);
   },
 
   async getBookingDetail(bookingId: string): Promise<ServiceBooking> {
     const { data, error } = await client
       .from('service_bookings')
-      .select(
-        '*, user_rackets(*), booking_slots(*), main_string:string_catalog!service_bookings_main_string_id_fkey(*), cross_string:string_catalog!service_bookings_cross_string_id_fkey(*)',
-      )
+      .select(serviceBookingDetailSelect)
       .eq('id', bookingId)
       .single();
 

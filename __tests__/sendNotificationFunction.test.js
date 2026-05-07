@@ -7,6 +7,9 @@ const readFunction = () =>
     'utf8',
   );
 
+const readConfig = () =>
+  readFileSync(join(process.cwd(), 'supabase/config.toml'), 'utf8');
+
 describe('send-notification Edge Function 보안', () => {
   test('admin notification type allowlist stays in sync with the app service', () => {
     const functionSource = readFunction();
@@ -46,5 +49,16 @@ describe('send-notification Edge Function 보안', () => {
     expect(source).toContain('관리자만 운영 알림을 발송할 수 있습니다.');
     expect(permissionCheckIndex).toBeGreaterThan(-1);
     expect(insertIndex).toBeGreaterThan(permissionCheckIndex);
+  });
+
+  test('CORS preflight can reach the function before POST auth checks', () => {
+    const source = readFunction();
+    const config = readConfig();
+
+    expect(source).toContain("'Access-Control-Allow-Methods': 'POST, OPTIONS'");
+    expect(source).toContain("'Access-Control-Max-Age': '86400'");
+    expect(source).toContain("request.method === 'OPTIONS'");
+    expect(config).toContain('[functions.send-notification]');
+    expect(config).toContain('verify_jwt = false');
   });
 });

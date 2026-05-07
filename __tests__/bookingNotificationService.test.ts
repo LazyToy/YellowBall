@@ -191,4 +191,80 @@ describe('bookingNotificationService', () => {
       }),
     });
   });
+
+  test('Edge Function status notification failure falls back to direct notification insert', async () => {
+    const invoke = jest.fn().mockResolvedValue({
+      data: null,
+      error: { message: 'Failed to send a request to the Edge Function' },
+    });
+    const single = jest
+      .fn()
+      .mockResolvedValue({ data: notification, error: null });
+    const select = jest.fn(() => ({ single }));
+    const insert = jest.fn(() => ({ select }));
+    const from = jest
+      .fn()
+      .mockReturnValueOnce(
+        prefQuery({
+          booking_notifications: true,
+          quiet_hours_enabled: false,
+          quiet_hours_start: null,
+          quiet_hours_end: null,
+        }),
+      )
+      .mockReturnValueOnce(profileQuery('ExponentPushToken[user]'))
+      .mockReturnValueOnce({ insert });
+    const service = createBookingNotificationService({
+      from,
+      functions: { invoke },
+    } as never);
+
+    await expect(
+      service.createStatusNotification({
+        userId: 'user-1',
+        bookingId: 'booking-1',
+        bookingType: 'service',
+        status: 'approved',
+      }),
+    ).resolves.toEqual(notification);
+
+    expect(insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_id: 'user-1',
+        notification_type: 'service_approved',
+      }),
+    );
+  });
+
+  test('Edge Function admin notification failure is treated as best effort', async () => {
+    const invoke = jest.fn().mockResolvedValue({
+      data: null,
+      error: { message: 'Failed to send a request to the Edge Function' },
+    });
+    const adminQuery = {
+      select: jest.fn(() => adminQuery),
+      in: jest.fn().mockResolvedValue({
+        data: [
+          {
+            id: 'admin-1',
+            expo_push_token: 'ExponentPushToken[admin]',
+          },
+        ],
+        error: null,
+      }),
+    };
+    const service = createBookingNotificationService({
+      from: jest.fn(() => adminQuery),
+      functions: { invoke },
+    } as never);
+
+    await expect(
+      service.notifyAdmins({
+        title: '새로운 예약',
+        body: '새로운 예약이 접수되었습니다.',
+        notificationType: 'admin_new_booking',
+        data: { bookingId: 'booking-1' },
+      }),
+    ).resolves.toEqual([]);
+  });
 });

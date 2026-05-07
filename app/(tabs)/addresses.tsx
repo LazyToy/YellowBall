@@ -1,11 +1,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/Button';
+import { ConfirmDialog, FeedbackDialog } from '@/components/FeedbackDialog';
 import { Input } from '@/components/Input';
+import { BackButton } from '@/components/MobileUI';
+import { RefreshableScrollView } from '@/components/PageRefresh';
 import { Typography } from '@/components/Typography';
 import { lightColors, theme } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
+import { useResetOnBlur } from '@/hooks/useResetOnBlur';
 import {
   addAddress,
   deleteAddress,
@@ -16,6 +21,7 @@ import {
 import type { Address } from '@/types/database';
 
 export default function AddressesScreen() {
+  const router = useRouter();
   const { profile } = useAuth();
   const profileId = profile?.id;
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -26,6 +32,11 @@ export default function AddressesScreen() {
   const [addressLine2, setAddressLine2] = useState('');
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const [message, setMessage] = useState<string>();
+  const [successDialog, setSuccessDialog] = useState<{
+    title: string;
+    message?: string;
+  } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Address | null>(null);
 
   const loadAddresses = useCallback(async () => {
     if (!profileId) {
@@ -39,14 +50,23 @@ export default function AddressesScreen() {
     loadAddresses().catch(() => setMessage('주소를 불러오지 못했습니다.'));
   }, [loadAddresses]);
 
-  const clearForm = () => {
+  const clearForm = useCallback(() => {
     setRecipientName('');
     setPhone('');
     setPostalCode('');
     setAddressLine1('');
     setAddressLine2('');
     setEditingAddressId(null);
-  };
+  }, []);
+
+  const resetScreen = useCallback(() => {
+    clearForm();
+    setMessage(undefined);
+    setSuccessDialog(null);
+    setDeleteTarget(null);
+  }, [clearForm]);
+
+  useResetOnBlur(resetScreen);
 
   const startEditing = (address: Address) => {
     setRecipientName(address.recipient_name);
@@ -72,6 +92,8 @@ export default function AddressesScreen() {
         address_line2: addressLine2 || null,
       };
 
+      const wasEditing = editingAddressId !== null;
+
       if (editingAddressId) {
         await updateAddress(editingAddressId, payload);
       } else {
@@ -82,16 +104,67 @@ export default function AddressesScreen() {
       }
 
       clearForm();
-      setMessage('주소가 저장되었습니다.');
       await loadAddresses();
+      setSuccessDialog({
+        title: wasEditing ? '주소가 수정되었습니다' : '주소가 등록되었습니다',
+        message: '확인을 누르면 주소 목록을 확인할 수 있습니다.',
+      });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '주소 저장 실패');
     }
   };
 
+  const handleSetDefaultAddress = async (address: Address) => {
+    try {
+      await setDefaultAddress(address.id);
+      await loadAddresses();
+      setSuccessDialog({
+        title: '기본 주소가 변경되었습니다',
+        message: '확인을 누르면 주소 목록을 확인할 수 있습니다.',
+      });
+    } catch {
+      setMessage('기본 주소 설정 실패');
+    }
+  };
+
+  const handleDeleteAddress = async () => {
+    if (!deleteTarget) {
+      return;
+    }
+
+    try {
+      await deleteAddress(deleteTarget.id);
+      setDeleteTarget(null);
+      await loadAddresses();
+      setSuccessDialog({
+        title: '주소가 삭제되었습니다',
+        message: '확인을 누르면 주소 목록을 확인할 수 있습니다.',
+      });
+    } catch {
+      setMessage('주소 삭제 실패');
+    }
+  };
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Typography variant="h1">주소 관리</Typography>
+    <RefreshableScrollView contentContainerStyle={styles.container}>
+      <FeedbackDialog
+        visible={successDialog !== null}
+        title={successDialog?.title ?? ''}
+        message={successDialog?.message}
+        onConfirm={() => setSuccessDialog(null)}
+      />
+      <ConfirmDialog
+        visible={deleteTarget !== null}
+        title="주소를 삭제할까요?"
+        message={deleteTarget?.address_line1}
+        confirmLabel="삭제"
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={handleDeleteAddress}
+      />
+      <View style={styles.titleRow}>
+        <BackButton onPress={() => router.back()} />
+        <Typography variant="h1">주소 관리</Typography>
+      </View>
       <View style={styles.section}>
         <Input label="받는 분" onChangeText={setRecipientName} value={recipientName} />
         <Input keyboardType="phone-pad" label="전화번호" onChangeText={setPhone} value={phone} />
@@ -128,11 +201,7 @@ export default function AddressesScreen() {
               <Button
                 accessibilityLabel={`${address.recipient_name} 기본 주소 설정`}
                 disabled={address.is_default}
-                onPress={() =>
-                  setDefaultAddress(address.id)
-                    .then(loadAddresses)
-                    .catch(() => setMessage('기본 주소 설정 실패'))
-                }
+                onPress={() => handleSetDefaultAddress(address)}
                 size="sm"
                 variant="outline"
               >
@@ -148,11 +217,7 @@ export default function AddressesScreen() {
               </Button>
               <Button
                 accessibilityLabel={`${address.recipient_name} 주소 삭제`}
-                onPress={() =>
-                  deleteAddress(address.id)
-                    .then(loadAddresses)
-                    .catch(() => setMessage('주소 삭제 실패'))
-                }
+                onPress={() => setDeleteTarget(address)}
                 size="sm"
                 variant="outline"
               >
@@ -168,7 +233,7 @@ export default function AddressesScreen() {
           {message}
         </Typography>
       ) : null}
-    </ScrollView>
+    </RefreshableScrollView>
   );
 }
 
@@ -181,6 +246,11 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: theme.spacing[3],
+  },
+  titleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing[2],
   },
   card: {
     backgroundColor: lightColors.card.hex,

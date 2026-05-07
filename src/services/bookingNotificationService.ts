@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { Platform } from 'react-native';
 
 import type {
   AppNotification,
@@ -317,6 +318,10 @@ export const createBookingNotificationService = (
       } satisfies Json,
     };
 
+    if (Platform.OS === 'web') {
+      return insertNotificationDirectly(client, payload);
+    }
+
     if (client.functions?.invoke) {
       const { data, error } = await client.functions.invoke('send-notification', {
         body: {
@@ -331,7 +336,7 @@ export const createBookingNotificationService = (
       });
 
       if (error) {
-        throw toServiceError('예약 알림을 발송하지 못했습니다.', error);
+        return insertNotificationDirectly(client, payload);
       }
 
       return resolveInvokedNotification(data);
@@ -367,6 +372,10 @@ export const createBookingNotificationService = (
       return [];
     }
 
+    if (Platform.OS === 'web') {
+      return [];
+    }
+
     if (client.functions?.invoke) {
       const results = await Promise.all(
         payloads.map((payload, index) =>
@@ -385,7 +394,7 @@ export const createBookingNotificationService = (
       const failed = results.find((result) => result.error);
 
       if (failed) {
-        throw toServiceError('관리자 알림을 발송하지 못했습니다.', failed.error);
+        return [];
       }
 
       return results
