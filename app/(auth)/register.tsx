@@ -1,19 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
+  BackHandler,
   Pressable,
   StyleSheet,
-  Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { Button } from '@/components/Button';
+import { Text } from '@/components/AppText';
 import { Input } from '@/components/Input';
-import { RefreshableScrollView } from '@/components/PageRefresh';
+import { AppScrollView } from '@/components/MobileUI';
 import { Typography } from '@/components/Typography';
+import { sharedTextStyles } from '@/constants/componentStyles';
 import { lightColors, theme } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 import { useResetOnBlur } from '@/hooks/useResetOnBlur';
@@ -60,10 +61,18 @@ const initialTouched: Record<keyof FormState, boolean> = {
 const USERNAME_CHECK_DELAY_MS = 350;
 const EMAIL_CHECK_DELAY_MS = 350;
 const EMAIL_CONFIRMATION_ALERT_TITLE = '이메일 인증 안내';
-const EMAIL_FIELD_HEIGHT =
-  theme.typography.lineHeight.sm + theme.spacing[2] + theme.controlHeights.md;
-const EMAIL_DOMAIN_MENU_TOP = EMAIL_FIELD_HEIGHT + theme.spacing[1];
 const CUSTOM_EMAIL_DOMAIN = 'custom';
+const screenHorizontalPadding = theme.spacing[6];
+const formHorizontalPadding = theme.spacing[5];
+const emailAtSignWidth = 18;
+const emailRowGap = theme.spacing[2];
+const emailControlHeight = theme.controlHeights.md + theme.spacing[1] * 2;
+const emailDomainMenuTop =
+  theme.typography.lineHeight.sm +
+  theme.spacing[2] +
+  emailControlHeight +
+  theme.spacing[1];
+const minEmailFieldWidth = 104;
 const emailDomainOptions = [
   { label: 'naver.com', value: 'naver.com' },
   { label: 'gmail.com', value: 'gmail.com' },
@@ -72,6 +81,35 @@ const emailDomainOptions = [
   { label: 'kakao.com', value: 'kakao.com' },
   { label: '직접 입력', value: CUSTOM_EMAIL_DOMAIN },
 ] as const;
+
+const clampNumber = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
+
+export const getEmailDomainMenuMetrics = (
+  windowWidth: number,
+  windowHeight: number,
+) => {
+  const shortestWindowSide = Math.max(0, Math.min(windowWidth, windowHeight));
+  const optionHeight = clampNumber(
+    Math.round(shortestWindowSide * 0.19),
+    72,
+    84,
+  );
+  const optionTextLineHeight = optionHeight >= 80 ? 24 : 22;
+  const optionVerticalPadding = Math.max(
+    theme.spacing[4],
+    Math.floor((optionHeight - optionTextLineHeight) / 2),
+  );
+
+  return {
+    menuHeight:
+      optionHeight * emailDomainOptions.length +
+      theme.borderWidth.hairline * (emailDomainOptions.length - 1),
+    optionHeight,
+    optionTextLineHeight,
+    optionVerticalPadding,
+  };
+};
 
 type EmailDomainValue = (typeof emailDomainOptions)[number]['value'];
 
@@ -101,6 +139,7 @@ const passwordConfirmError = (
 export default function RegisterScreen() {
   const router = useRouter();
   const { signInWithOAuthProvider } = useAuth();
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const [form, setForm] = useState<FormState>(initialForm);
   const [touched, setTouched] =
     useState<Record<keyof FormState, boolean>>(initialTouched);
@@ -110,9 +149,11 @@ export default function RegisterScreen() {
   const [domainMenuOpen, setDomainMenuOpen] = useState(false);
   const [emailDuplicated, setEmailDuplicated] = useState(false);
   const [emailCheckError, setEmailCheckError] = useState<string>();
+  const [emailAvailable, setEmailAvailable] = useState(false);
   const [isCheckingEmail, setIsCheckingEmail] = useState(false);
   const [usernameDuplicated, setUsernameDuplicated] = useState(false);
   const [usernameCheckError, setUsernameCheckError] = useState<string>();
+  const [usernameAvailable, setUsernameAvailable] = useState(false);
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [socialProvider, setSocialProvider] =
@@ -128,9 +169,11 @@ export default function RegisterScreen() {
     setDomainMenuOpen(false);
     setEmailDuplicated(false);
     setEmailCheckError(undefined);
+    setEmailAvailable(false);
     setIsCheckingEmail(false);
     setUsernameDuplicated(false);
     setUsernameCheckError(undefined);
+    setUsernameAvailable(false);
     setIsCheckingUsername(false);
     setIsSubmitting(false);
     setSocialProvider(null);
@@ -139,6 +182,10 @@ export default function RegisterScreen() {
   }, []);
 
   useResetOnBlur(resetForm);
+
+  const closeDomainMenu = useCallback(() => {
+    setDomainMenuOpen(false);
+  }, []);
 
   const email = useMemo(() => toEmailAddress(form), [form]);
   const emailValidation = useMemo(
@@ -170,6 +217,7 @@ export default function RegisterScreen() {
 
     setEmailDuplicated(false);
     setEmailCheckError(undefined);
+    setEmailAvailable(false);
 
     if (!normalizedEmail || !formatValidation.valid) {
       setIsCheckingEmail(false);
@@ -188,14 +236,16 @@ export default function RegisterScreen() {
           }
 
           setEmailDuplicated(!available);
+          setEmailAvailable(available);
         })
         .catch(() => {
           if (!active) {
             return;
           }
 
+          setEmailAvailable(false);
           setEmailCheckError(
-            '이메일 중복 확인을 건너뛰었습니다. 가입 시 다시 확인합니다.',
+            '이메일 중복 확인에 실패했습니다. 잠시 후 다시 시도해 주세요.',
           );
         })
         .finally(() => {
@@ -218,6 +268,7 @@ export default function RegisterScreen() {
 
     setUsernameDuplicated(false);
     setUsernameCheckError(undefined);
+    setUsernameAvailable(false);
 
     if (!username || !formatValidation.valid) {
       setIsCheckingUsername(false);
@@ -236,14 +287,16 @@ export default function RegisterScreen() {
           }
 
           setUsernameDuplicated(!available);
+          setUsernameAvailable(available);
         })
         .catch(() => {
           if (!active) {
             return;
           }
 
+          setUsernameAvailable(false);
           setUsernameCheckError(
-            '아이디 중복 확인을 건너뛰었습니다. 가입 시 다시 확인합니다.',
+            '아이디 중복 확인에 실패했습니다. 잠시 후 다시 시도해 주세요.',
           );
         })
         .finally(() => {
@@ -333,6 +386,8 @@ export default function RegisterScreen() {
     passwordValidation.valid &&
     !passwordConfirmValidationError &&
     Boolean(form.passwordConfirm) &&
+    !emailCheckError &&
+    !usernameCheckError &&
     !isCheckingEmail &&
     !isCheckingUsername;
 
@@ -400,25 +455,56 @@ export default function RegisterScreen() {
     }
   };
 
-  const goToLogin = () => {
+  const goToLogin = useCallback(() => {
     router.replace('/(auth)/login');
-  };
+  }, [router]);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        goToLogin();
+        return true;
+      },
+    );
+
+    return () => subscription.remove();
+  }, [goToLogin]);
 
   const isBusy = isSubmitting || socialProvider !== null;
+  const hasAvailabilityCheckError = Boolean(emailCheckError || usernameCheckError);
+  const isSubmitDisabled =
+    isBusy || isCheckingEmail || isCheckingUsername || hasAvailabilityCheckError;
+  const emailFieldWidth = useMemo(() => {
+    const contentWidth = Math.max(
+      0,
+      Math.floor(windowWidth - screenHorizontalPadding * 2 - formHorizontalPadding * 2),
+    );
+    const fieldWidth = Math.floor(
+      (contentWidth - emailAtSignWidth - emailRowGap * 2) / 2,
+    );
+
+    return Math.max(minEmailFieldWidth, fieldWidth);
+  }, [windowWidth]);
+  const emailDomainMenuMetrics = useMemo(
+    () => getEmailDomainMenuMetrics(windowWidth, windowHeight),
+    [windowHeight, windowWidth],
+  );
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.keyboardView}
-      testID="register-keyboard-view"
+    <AppScrollView
+      contentContainerStyle={styles.container}
+      testID="register-scroll-view"
     >
-      <RefreshableScrollView
-        automaticallyAdjustKeyboardInsets
-        contentContainerStyle={styles.container}
-        keyboardDismissMode="interactive"
-        keyboardShouldPersistTaps="handled"
-        testID="register-scroll-view"
-      >
+      {domainMenuOpen ? (
+        <Pressable
+          accessibilityLabel="이메일 도메인 메뉴 닫기"
+          accessibilityRole="button"
+          onPress={closeDomainMenu}
+          style={styles.domainScreenDismissLayer}
+          testID="domain-screen-dismiss-layer"
+        />
+      ) : null}
         <View style={styles.header}>
           <Typography variant="caption" style={styles.eyebrow}>
             YellowBall account
@@ -430,17 +516,74 @@ export default function RegisterScreen() {
         </View>
 
         <View style={styles.form}>
-          <View style={styles.emailGroup}>
+          {domainMenuOpen ? (
+            <Pressable
+              accessibilityLabel="이메일 도메인 메뉴 닫기"
+              accessibilityRole="button"
+              onPress={closeDomainMenu}
+              style={styles.domainMenuDismissLayer}
+              testID="domain-menu-dismiss-layer"
+            />
+          ) : null}
+          <View
+            pointerEvents={domainMenuOpen ? 'box-none' : 'auto'}
+            style={[
+              styles.emailGroup,
+              domainMenuOpen
+                ? {
+                    marginBottom: -emailDomainMenuMetrics.menuHeight,
+                    paddingBottom: emailDomainMenuMetrics.menuHeight,
+                  }
+                : null,
+            ]}
+          >
+            <View style={styles.emailLabelRow} testID="email-label-row">
+              <Text
+                style={[
+                  styles.emailLabel,
+                  {
+                    marginRight: emailRowGap,
+                    width: emailFieldWidth,
+                  },
+                ]}
+                testID="email-local-label"
+              >
+                이메일
+              </Text>
+              <View style={styles.emailAtSignLabelSpacer} />
+              <Text
+                style={[
+                  styles.emailDomainLabel,
+                  {
+                    width: emailFieldWidth,
+                  },
+                ]}
+                testID="email-domain-label"
+              >
+                도메인
+              </Text>
+            </View>
             <View style={[styles.emailRow]} testID="email-row">
-              <View style={[styles.emailLocalField]} testID="email-local-field">
+              <View
+                style={[
+                  styles.emailLocalField,
+                  {
+                    flexBasis: emailFieldWidth,
+                    marginRight: emailRowGap,
+                    maxWidth: emailFieldWidth,
+                    width: emailFieldWidth,
+                  },
+                ]}
+                testID="email-local-field"
+              >
                 <Input
                   accessibilityLabel="이메일 아이디"
                   autoCapitalize="none"
                   containerStyle={styles.emailInput}
                   keyboardType="email-address"
-                  label="이메일"
                   onChangeText={updateEmailLocal}
                   onBlur={markTouched('emailLocal')}
+                  onFocus={closeDomainMenu}
                   placeholder="yellow"
                   textContentType="emailAddress"
                   value={form.emailLocal}
@@ -450,71 +593,103 @@ export default function RegisterScreen() {
                 <Text style={styles.atSign}>@</Text>
               </View>
               <View
-                style={[styles.emailDomainField]}
+                style={[
+                  styles.emailDomainField,
+                  {
+                    flexBasis: emailFieldWidth,
+                    maxWidth: emailFieldWidth,
+                    width: emailFieldWidth,
+                  },
+              ]}
                 testID="email-domain-field"
               >
-                <Typography variant="caption" style={styles.emailDomainLabel}>
-                  도메인
-                </Typography>
-                <Pressable
-                  accessibilityLabel="이메일 도메인 선택"
-                  accessibilityRole="button"
-                  onPress={() => setDomainMenuOpen((open) => !open)}
-                  style={({ pressed }) => [
-                    styles.domainSelect,
-                    pressed && styles.pressed,
-                  ]}
+                <View
+                  style={styles.domainSelectSurface}
+                  testID="email-domain-select-surface"
                 >
-                  <Text
-                    numberOfLines={1}
-                    style={[
-                      styles.domainSelectText,
-                      emailDomainSelection === CUSTOM_EMAIL_DOMAIN &&
-                        !form.emailDomain &&
-                        styles.domainSelectPlaceholder,
+                  <Pressable
+                    accessibilityLabel="이메일 도메인 선택"
+                    accessibilityRole="button"
+                    hitSlop={4}
+                    onPress={() => setDomainMenuOpen((open) => !open)}
+                    style={({ pressed }) => [
+                      styles.domainSelectPressable,
+                      pressed && styles.pressed,
                     ]}
                   >
-                    {emailDomainSelection === CUSTOM_EMAIL_DOMAIN
-                      ? form.emailDomain || '직접 입력'
-                      : emailDomainSelection}
-                  </Text>
-                  <Text style={styles.domainSelectChevron}>
-                    {domainMenuOpen ? '^' : 'v'}
-                  </Text>
-                </Pressable>
+                    <Text
+                      allowFontScaling={false}
+                      numberOfLines={1}
+                      style={[
+                        styles.domainSelectText,
+                        emailDomainSelection === CUSTOM_EMAIL_DOMAIN &&
+                          !form.emailDomain &&
+                          styles.domainSelectPlaceholder,
+                      ]}
+                    >
+                      {emailDomainSelection === CUSTOM_EMAIL_DOMAIN
+                        ? form.emailDomain || '직접 입력'
+                        : emailDomainSelection}
+                    </Text>
+                  </Pressable>
+                </View>
               </View>
             </View>
             {domainMenuOpen ? (
               <View
-                style={[styles.domainMenuAnchor]}
+                style={[
+                  styles.domainMenuAnchor,
+                  {
+                    left:
+                      emailFieldWidth + emailRowGap + emailAtSignWidth + emailRowGap,
+                    top: emailDomainMenuTop,
+                    width: emailFieldWidth,
+                  },
+                ]}
                 testID="domain-menu-anchor"
               >
                 <View style={styles.domainMenu}>
                   {emailDomainOptions.map((option, index) => (
-                    <Pressable
-                      accessibilityLabel={`이메일 도메인 ${option.label}`}
-                      accessibilityRole="button"
-                      key={option.value}
-                      onPress={() => selectEmailDomain(option.value)}
-                      style={({ pressed }) => [
-                        styles.domainOption,
-                        index === emailDomainOptions.length - 1 &&
-                          styles.domainOptionLast,
-                        option.value === emailDomainSelection &&
-                          styles.domainOptionSelected,
-                        pressed && styles.pressed,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.domainOptionText,
+                    <React.Fragment key={option.value}>
+                      <Pressable
+                        accessibilityLabel={`이메일 도메인 ${option.label}`}
+                        accessibilityRole="button"
+                        onPress={() => selectEmailDomain(option.value)}
+                        style={({ pressed }) => [
+                          styles.domainOption,
+                          {
+                            minHeight: emailDomainMenuMetrics.optionHeight,
+                            paddingVertical:
+                              emailDomainMenuMetrics.optionVerticalPadding,
+                          },
                           option.value === emailDomainSelection &&
-                            styles.domainOptionTextSelected,
+                            styles.domainOptionSelected,
+                          pressed && styles.pressed,
                         ]}
                       >
-                        {option.label}
-                      </Text>
-                    </Pressable>
+                        <Text
+                          allowFontScaling={false}
+                          style={[
+                            styles.domainOptionText,
+                            {
+                              lineHeight:
+                                emailDomainMenuMetrics.optionTextLineHeight,
+                            },
+                            option.value === emailDomainSelection &&
+                              styles.domainOptionTextSelected,
+                          ]}
+                        >
+                          {option.label}
+                        </Text>
+                      </Pressable>
+                      {index < emailDomainOptions.length - 1 ? (
+                        <View
+                          pointerEvents="none"
+                          style={styles.domainOptionSeparator}
+                          testID={`email-domain-option-separator-${index}`}
+                        />
+                      ) : null}
+                    </React.Fragment>
                   ))}
                 </View>
               </View>
@@ -527,6 +702,7 @@ export default function RegisterScreen() {
                 keyboardType="email-address"
                 onChangeText={updateCustomEmailDomain}
                 onBlur={markTouched('emailDomain')}
+                onFocus={closeDomainMenu}
                 placeholder="example.com"
                 value={form.emailDomain}
               />
@@ -550,6 +726,11 @@ export default function RegisterScreen() {
                 {emailCheckError}
               </Typography>
             ) : null}
+            {!isCheckingEmail && !emailCheckError && emailAvailable ? (
+              <Typography variant="caption" style={styles.availabilitySuccessText}>
+                가입 가능한 이메일입니다.
+              </Typography>
+            ) : null}
           </View>
           <Input
             accessibilityLabel="아이디"
@@ -562,6 +743,7 @@ export default function RegisterScreen() {
             label="아이디"
             onChangeText={updateField('username')}
             onBlur={markTouched('username')}
+            onFocus={closeDomainMenu}
             placeholder="yellow_01"
             value={form.username}
           />
@@ -575,6 +757,11 @@ export default function RegisterScreen() {
               {usernameCheckError}
             </Typography>
           ) : null}
+          {!isCheckingUsername && !usernameCheckError && usernameAvailable ? (
+            <Typography variant="caption" style={styles.availabilitySuccessText}>
+              가입 가능한 아이디입니다.
+            </Typography>
+          ) : null}
           <Input
             accessibilityLabel="닉네임"
             error={
@@ -583,6 +770,7 @@ export default function RegisterScreen() {
             label="닉네임"
             onChangeText={updateField('nickname')}
             onBlur={markTouched('nickname')}
+            onFocus={closeDomainMenu}
             placeholder="옐로볼"
             value={form.nickname}
           />
@@ -594,6 +782,7 @@ export default function RegisterScreen() {
             label="비밀번호"
             onChangeText={updateField('password')}
             onBlur={markTouched('password')}
+            onFocus={closeDomainMenu}
             placeholder="8자 이상"
             secureTextEntry
             textContentType="newPassword"
@@ -609,6 +798,7 @@ export default function RegisterScreen() {
             label="비밀번호 확인"
             onChangeText={updateField('passwordConfirm')}
             onBlur={markTouched('passwordConfirm')}
+            onFocus={closeDomainMenu}
             placeholder="비밀번호 재입력"
             secureTextEntry
             textContentType="newPassword"
@@ -630,38 +820,56 @@ export default function RegisterScreen() {
             </Typography>
           ) : null}
 
-          <Button
+          <Pressable
             accessibilityLabel="가입하기"
-            disabled={isBusy || isCheckingEmail || isCheckingUsername}
-            loading={isSubmitting}
+            accessibilityRole="button"
+            accessibilityState={{
+              busy: isSubmitting,
+              disabled: isSubmitDisabled,
+            }}
+            disabled={isSubmitDisabled}
             onPress={handleSubmit}
-            size="lg"
+            style={[
+              styles.authButton,
+              styles.nativeAuthButton,
+              isSubmitDisabled ? styles.nativeAuthButtonDisabled : null,
+            ]}
+            testID="signup-submit-button"
           >
-            가입하기
-          </Button>
+            {isSubmitting ? (
+              <ActivityIndicator
+                color={lightColors.primaryForeground.hex}
+                size="small"
+              />
+            ) : null}
+            <Text
+              style={styles.nativeAuthButtonText}
+              testID="signup-submit-label"
+            >
+              가입하기
+            </Text>
+          </Pressable>
 
           <View style={styles.divider} />
 
-          <Button
+          <SocialSignupButton
             accessibilityLabel="Google로 가입"
             disabled={isBusy}
             loading={socialProvider === 'google'}
             onPress={() => handleSocialSignIn('google')}
-            size="lg"
-            variant="outline"
-          >
-            Google로 계속하기
-          </Button>
-          <Button
-            accessibilityLabel="카카오로 가입"
+            provider="google"
+            testID="google-social-signup-button"
+            title="Google로 계속하기"
+          />
+          <SocialSignupButton
+            accessibilityLabel="카카오톡으로 가입"
             disabled={isBusy}
             loading={socialProvider === 'kakao'}
             onPress={() => handleSocialSignIn('kakao')}
-            size="lg"
-            variant="secondary"
-          >
-            카카오로 계속하기
-          </Button>
+            provider="kakao"
+            testID="kakao-social-signup-button"
+            title="카카오톡으로 계속하기"
+          />
         </View>
 
         <Pressable
@@ -673,24 +881,95 @@ export default function RegisterScreen() {
             로그인으로 이동
           </Typography>
         </Pressable>
-      </RefreshableScrollView>
-    </KeyboardAvoidingView>
+    </AppScrollView>
+  );
+}
+
+function SocialSignupButton({
+  accessibilityLabel,
+  disabled,
+  loading,
+  onPress,
+  provider,
+  testID,
+  title,
+}: {
+  accessibilityLabel: string;
+  disabled: boolean;
+  loading: boolean;
+  onPress: () => void;
+  provider: 'google' | 'kakao';
+  testID: string;
+  title: string;
+}) {
+  const isGoogle = provider === 'google';
+
+  return (
+    <View
+      style={[
+        styles.socialButtonOuter,
+        isGoogle ? styles.googleButton : styles.kakaoButton,
+        disabled ? styles.nativeAuthButtonDisabled : null,
+      ]}
+      testID={isGoogle ? 'google-social-signup-surface' : 'kakao-social-signup-surface'}
+    >
+      <Pressable
+        accessibilityLabel={accessibilityLabel}
+        accessibilityRole="button"
+        accessibilityState={{ disabled, busy: loading }}
+        android_ripple={{ color: 'rgba(0,0,0,0.08)', borderless: false }}
+        disabled={disabled}
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.socialButtonPressable,
+          pressed ? styles.pressed : null,
+        ]}
+        testID={testID}
+      >
+        {/* Android에서 Pressable의 flexDirection이 무시되므로 View로 레이아웃 처리 */}
+        <View style={styles.socialButtonRow}>
+          <View style={styles.socialIconSlot}>
+            <View
+              style={[styles.socialIcon, isGoogle ? styles.googleIcon : styles.kakaoIcon]}
+            >
+              <Text style={isGoogle ? styles.googleIconText : styles.kakaoIconText}>
+                {isGoogle ? 'G' : 'K'}
+              </Text>
+            </View>
+          </View>
+          <Text
+            adjustsFontSizeToFit
+            minimumFontScale={0.86}
+            numberOfLines={1}
+            style={isGoogle ? styles.googleButtonText : styles.kakaoButtonText}
+            testID={isGoogle ? 'google-social-signup-label' : 'kakao-social-signup-label'}
+          >
+            {title}
+          </Text>
+          <View style={styles.socialSpinnerSlot}>
+            {loading ? (
+              <ActivityIndicator
+                color={isGoogle ? lightColors.foreground.hex : '#000000'}
+                size="small"
+              />
+            ) : null}
+          </View>
+        </View>
+      </Pressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  keyboardView: {
-    backgroundColor: lightColors.background.hex,
-    flex: 1,
-  },
   container: {
     backgroundColor: lightColors.background.hex,
     flexGrow: 1,
     gap: theme.spacing[8],
     justifyContent: 'flex-start',
-    paddingHorizontal: theme.spacing[6],
+    paddingHorizontal: screenHorizontalPadding,
     paddingBottom: theme.spacing[12],
     paddingTop: theme.spacing[6],
+    position: 'relative',
   },
   header: {
     gap: theme.spacing[2],
@@ -710,21 +989,57 @@ const styles = StyleSheet.create({
     borderWidth: theme.borderWidth.hairline,
     gap: theme.spacing[4],
     overflow: 'visible',
-    padding: theme.spacing[5],
+    padding: formHorizontalPadding,
+    position: 'relative',
+    zIndex: 10,
     ...theme.shadow.card,
   },
-  emailGroup: {
-    gap: theme.spacing[2],
-    position: 'relative',
-    zIndex: 2,
+  authButton: {
+    width: '100%',
   },
-  emailRow: {
-    alignItems: 'flex-end',
+  nativeAuthButton: {
+    alignItems: 'center',
+    backgroundColor: lightColors.primary.hex,
+    borderColor: lightColors.primary.hex,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth.hairline,
+    elevation: 0,
     flexDirection: 'row',
     gap: theme.spacing[2],
+    height: 48,
+    justifyContent: 'center',
+    minHeight: 48,
+    overflow: 'hidden',
+    zIndex: 1,
+  },
+  nativeAuthButtonText: {
+    color: lightColors.primaryForeground.hex,
+    fontFamily: theme.typography.fontFamily.body,
+    fontSize: 16,
+    fontWeight: theme.typography.fontWeight.semibold,
+    lineHeight: 20,
+  },
+  emailGroup: {
+    elevation: 20,
+    gap: theme.spacing[2],
+    position: 'relative',
+    zIndex: 20,
+  },
+  emailLabelRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+  },
+  emailLabel: {
+    ...sharedTextStyles.control,
+    color: lightColors.foreground.hex,
+  },
+  emailRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
   },
   emailLocalField: {
-    flex: 1,
+    flexGrow: 0,
+    flexShrink: 0,
     minWidth: 0,
   },
   emailInput: {
@@ -732,10 +1047,14 @@ const styles = StyleSheet.create({
   },
   atSignBox: {
     alignItems: 'center',
-    height: theme.controlHeights.md,
+    height: emailControlHeight,
     justifyContent: 'center',
-    marginBottom: 1,
-    width: 18,
+    marginRight: emailRowGap,
+    width: emailAtSignWidth,
+  },
+  emailAtSignLabelSpacer: {
+    marginRight: emailRowGap,
+    width: emailAtSignWidth,
   },
   atSign: {
     color: lightColors.mutedForeground.hex,
@@ -745,74 +1064,87 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   emailDomainField: {
-    flex: 1,
-    gap: theme.spacing[2],
+    flexGrow: 0,
+    flexShrink: 0,
     minWidth: 0,
   },
   emailDomainLabel: {
+    ...sharedTextStyles.control,
     color: lightColors.foreground.hex,
-    fontWeight: theme.typography.fontWeight.medium,
   },
-  domainSelect: {
-    alignItems: 'center',
+  domainSelectSurface: {
     backgroundColor: lightColors.card.hex,
     borderColor: lightColors.input.hex,
     borderRadius: theme.borderRadius.md,
     borderWidth: theme.borderWidth.hairline,
-    flexDirection: 'row',
-    gap: theme.spacing[2],
-    minHeight: theme.controlHeights.md,
-    paddingHorizontal: theme.spacing[3],
+    height: emailControlHeight,
+    justifyContent: 'center',
+    minHeight: emailControlHeight,
+    minWidth: 0,
+    overflow: 'hidden',
+    position: 'relative',
+    width: '100%',
+  },
+  domainSelectPressable: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
   domainSelectText: {
     color: lightColors.foreground.hex,
-    flex: 1,
+    flexShrink: 1,
     fontFamily: theme.typography.fontFamily.body,
     fontSize: theme.typography.fontSize.sm,
+    includeFontPadding: false,
     lineHeight: theme.typography.lineHeight.sm,
+    paddingHorizontal: theme.spacing[3],
+    width: '100%',
   },
   domainSelectPlaceholder: {
     color: lightColors.mutedForeground.hex,
   },
-  domainSelectChevron: {
-    color: lightColors.mutedForeground.hex,
-    fontFamily: theme.typography.fontFamily.body,
-    fontSize: theme.typography.fontSize.caption,
-    fontWeight: theme.typography.fontWeight.bold,
-  },
   domainMenuAnchor: {
-    alignSelf: 'flex-end',
-    elevation: 8,
+    elevation: 20,
     position: 'absolute',
-    right: 0,
-    top: EMAIL_DOMAIN_MENU_TOP,
-    width: '47%',
     zIndex: 10,
+  },
+  domainScreenDismissLayer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
+    zIndex: 5,
+  },
+  domainMenuDismissLayer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
+    zIndex: 0,
   },
   domainMenu: {
     backgroundColor: lightColors.card.hex,
     borderColor: lightColors.border.hex,
     borderRadius: theme.borderRadius.md,
     borderWidth: theme.borderWidth.hairline,
+    elevation: 4,
     overflow: 'hidden',
   },
   domainOption: {
-    borderBottomColor: lightColors.border.hex,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    alignSelf: 'stretch',
     justifyContent: 'center',
-    minHeight: theme.controlHeights.md,
-    paddingHorizontal: theme.spacing[3],
-  },
-  domainOptionLast: {
-    borderBottomWidth: 0,
+    width: '100%',
   },
   domainOptionSelected: {
     backgroundColor: lightColors.secondary.hex,
+  },
+  domainOptionSeparator: {
+    backgroundColor: lightColors.input.hex,
+    height: theme.borderWidth.hairline,
+    width: '100%',
   },
   domainOptionText: {
     color: lightColors.foreground.hex,
     fontFamily: theme.typography.fontFamily.body,
     fontSize: theme.typography.fontSize.sm,
+    includeFontPadding: false,
+    paddingHorizontal: theme.spacing[3],
   },
   domainOptionTextSelected: {
     color: lightColors.primary.hex,
@@ -820,6 +1152,105 @@ const styles = StyleSheet.create({
   },
   customDomainInput: {
     marginTop: -theme.spacing[1],
+  },
+  nativeAuthButtonDisabled: {
+    opacity: theme.opacity.disabled,
+  },
+  socialButtonOuter: {
+    borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth.hairline,
+    height: 48,
+    minHeight: 48,
+    overflow: 'hidden',
+    width: '100%',
+    zIndex: 1,
+  },
+  socialButtonPressable: {
+    flex: 1,
+    height: '100%',
+    justifyContent: 'center',
+    minHeight: 48,
+    overflow: 'hidden',
+    position: 'relative',
+    width: '100%',
+  },
+  socialButtonRow: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    height: '100%',
+    minHeight: 48,
+    paddingHorizontal: theme.spacing[3],
+    width: '100%',
+  },
+  googleButton: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#DADCE0',
+  },
+  kakaoButton: {
+    backgroundColor: '#FEE500',
+    borderColor: '#FEE500',
+  },
+  socialIconSlot: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 32,
+  },
+  socialIcon: {
+    alignItems: 'center',
+    borderRadius: 6,
+    height: 28,
+    justifyContent: 'center',
+    width: 28,
+  },
+  googleIcon: {
+    backgroundColor: '#FFFFFF',
+  },
+  kakaoIcon: {
+    backgroundColor: '#000000',
+  },
+  googleIconText: {
+    color: '#4285F4',
+    fontFamily: theme.typography.fontFamily.body,
+    fontSize: 18,
+    fontWeight: theme.typography.fontWeight.bold,
+    includeFontPadding: false,
+    lineHeight: 22,
+  },
+  kakaoIconText: {
+    color: '#FEE500',
+    fontFamily: theme.typography.fontFamily.body,
+    fontSize: 14,
+    fontWeight: theme.typography.fontWeight.bold,
+    includeFontPadding: false,
+    lineHeight: 18,
+  },
+  googleButtonText: {
+    color: '#3C4043',
+    flex: 1,
+    fontFamily: theme.typography.fontFamily.body,
+    fontSize: 15,
+    fontWeight: theme.typography.fontWeight.semibold,
+    includeFontPadding: false,
+    lineHeight: 20,
+    maxWidth: '76%',
+    textAlign: 'center',
+  },
+  kakaoButtonText: {
+    color: '#000000',
+    flex: 1,
+    fontFamily: theme.typography.fontFamily.body,
+    fontSize: 15,
+    fontWeight: theme.typography.fontWeight.semibold,
+    includeFontPadding: false,
+    lineHeight: 20,
+    maxWidth: '76%',
+    textAlign: 'center',
+  },
+  socialSpinnerSlot: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 32,
   },
   divider: {
     backgroundColor: lightColors.border.hex,
@@ -834,6 +1265,10 @@ const styles = StyleSheet.create({
   },
   successText: {
     color: lightColors.primary.hex,
+  },
+  availabilitySuccessText: {
+    color: lightColors.primary.hex,
+    marginTop: -theme.spacing[2],
   },
   warningText: {
     color: lightColors.mutedForeground.hex,

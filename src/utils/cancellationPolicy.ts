@@ -4,8 +4,10 @@ export type BookingWithSlot = Pick<ServiceBooking, 'status'> & {
   booking_slots?: Pick<BookingSlot, 'start_time'> | null;
 };
 
-const FREE_CANCELLATION_HOURS = 24;
-const FREE_CANCELLATION_MS = FREE_CANCELLATION_HOURS * 60 * 60 * 1000;
+export const DEFAULT_FREE_CANCELLATION_HOURS = 6;
+
+const hoursToMs = (hours: number) =>
+  Math.max(0, hours) * 60 * 60 * 1000;
 
 const statusesAfterWorkStart = new Set<ServiceBooking['status']>([
   'in_progress',
@@ -24,7 +26,10 @@ const cancelledOrClosedStatuses = new Set<ServiceBooking['status']>([
   'no_show',
 ]);
 
-export const getCancellationDeadline = (booking: BookingWithSlot) => {
+export const getCancellationDeadline = (
+  booking: BookingWithSlot,
+  freeCancellationHours = DEFAULT_FREE_CANCELLATION_HOURS,
+) => {
   const startTime = booking.booking_slots?.start_time;
 
   if (!startTime) {
@@ -37,14 +42,15 @@ export const getCancellationDeadline = (booking: BookingWithSlot) => {
     return null;
   }
 
-  return new Date(startsAt - FREE_CANCELLATION_MS);
+  return new Date(startsAt - hoursToMs(freeCancellationHours));
 };
 
 export const canCancelFreely = (
   booking: BookingWithSlot,
   now: Date = new Date(),
+  freeCancellationHours = DEFAULT_FREE_CANCELLATION_HOURS,
 ) => {
-  const deadline = getCancellationDeadline(booking);
+  const deadline = getCancellationDeadline(booking, freeCancellationHours);
 
   return deadline !== null && now.getTime() <= deadline.getTime();
 };
@@ -56,8 +62,9 @@ export const canRequestCancellation = (booking: BookingWithSlot) =>
 export const getRemainingTime = (
   booking: BookingWithSlot,
   now: Date = new Date(),
+  freeCancellationHours = DEFAULT_FREE_CANCELLATION_HOURS,
 ) => {
-  const deadline = getCancellationDeadline(booking);
+  const deadline = getCancellationDeadline(booking, freeCancellationHours);
 
   if (!deadline) {
     return {

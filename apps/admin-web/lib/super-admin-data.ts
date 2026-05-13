@@ -827,6 +827,118 @@ function getAuditSeverity(category: AuditCategory): AuditLogViewItem['severity']
   return 'low';
 }
 
+const auditActionLabels: Record<string, string> = {
+  'admin.appoint': '관리자 임명',
+  'admin.dismiss': '관리자 해임',
+  'admin.permissions.update': '관리자 권한 변경',
+  'app.menu.update': '앱 메뉴 노출 변경',
+  'app.policy.update': '운영 정책 변경',
+  'store.settings.update': '매장/영업 설정 변경',
+};
+
+const policyLabels: Record<keyof PolicySettings, string> = {
+  autoRefundEnabled: '자동 환불 처리',
+  bookingMaxDaysAhead: '최대 예약 가능 일수',
+  bookingOpenHoursBefore: '예약 가능 시작 시간',
+  maxConcurrentBookings: '동시 예약 가능 수',
+  noShowAutoCancelMinutes: '노쇼 자동 취소',
+  noShowSuspensionDays: '3회 노쇼 자동 제재',
+  notifyBookingConfirmation: '예약 확정 즉시 알림',
+  notifyMarketing: '마케팅 알림 발송',
+  notifyPickupReady: '픽업 가능 알림',
+  storePickupRefundHours: '시타 예약 환불 가능',
+  stringingRefundHours: '스트링 작업 환불 가능',
+  suspendedLoginBlocked: '제재 사용자 로그인 차단',
+  unpaidAutoCancelMinutes: '결제 미완료 자동 취소',
+};
+
+const storeSettingLabels: Record<keyof StoreSettings, string> = {
+  address: '주소',
+  businessNumber: '사업자번호',
+  deliveryNotice: '배송 운영 메모',
+  introduction: '소개',
+  notificationNotice: '알림 운영 메모',
+  paymentNotice: '결제/정산 운영 메모',
+  phone: '대표 전화',
+  representative: '대표자',
+  settlementNotice: '정산 메모',
+  storeName: '매장명',
+};
+
+const menuLabelMap = new Map<MenuId, string>(
+  menuGroups.flatMap((group) => group.items.map((item) => [item.id, item.label] as const)),
+);
+
+const permissionLabelMap = new Map<AdminPermissionKey, string>(
+  permissionDefinitions.map((definition) => [definition.key, definition.label] as const),
+);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function unwrapSettingValue(value: unknown) {
+  return isRecord(value) && 'value' in value ? value.value : value;
+}
+
+function extractMenuValue(value: unknown) {
+  const unwrapped = unwrapSettingValue(value);
+
+  if (!isRecord(unwrapped)) {
+    return null;
+  }
+
+  return isRecord(unwrapped.menus) ? unwrapped.menus : unwrapped;
+}
+
+function formatAuditScalar(value: unknown) {
+  if (typeof value === 'boolean') {
+    return value ? 'ON' : 'OFF';
+  }
+
+  if (value === null || value === undefined || value === '') {
+    return '없음';
+  }
+
+  if (typeof value === 'number') {
+    return String(value);
+  }
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  return JSON.stringify(value);
+}
+
+function formatChangedFields(
+  beforeValue: unknown,
+  afterValue: unknown,
+  labels: Record<string, string> | Map<string, string>,
+) {
+  const beforeRecord = isRecord(beforeValue) ? beforeValue : {};
+  const afterRecord = isRecord(afterValue) ? afterValue : {};
+  const labelKeys =
+    labels instanceof Map ? [...labels.keys()] : Object.keys(labels);
+  const keys = labelKeys.filter((key) => key in beforeRecord || key in afterRecord);
+  const changes = keys
+    .filter(
+      (key) =>
+        JSON.stringify(beforeRecord[key] ?? null) !==
+        JSON.stringify(afterRecord[key] ?? null),
+    )
+    .map((key) => {
+      const label = labels instanceof Map ? labels.get(key) : labels[key];
+      return `${label ?? key}: ${formatAuditScalar(beforeRecord[key])} -> ${formatAuditScalar(afterRecord[key])}`;
+    });
+
+  return changes.length > 0 ? changes.join(', ') : '변경 내용 없음';
+}
+
+function getAuditActionLabel(action: string) {
+  return auditActionLabels[action] ?? action;
+}
+
 function stringifyAuditValue(value: unknown) {
   if (value === null || value === undefined) {
     return '값 없음';
@@ -840,6 +952,40 @@ function stringifyAuditValue(value: unknown) {
 }
 
 function getAuditDetail(row: AuditLogRow) {
+  if (row.action === 'app.menu.update') {
+    return formatChangedFields(
+      extractMenuValue(row.before_value),
+      extractMenuValue(row.after_value),
+      menuLabelMap,
+    );
+  }
+
+  if (row.action === 'app.policy.update') {
+    return formatChangedFields(
+      unwrapSettingValue(row.before_value),
+      unwrapSettingValue(row.after_value),
+      policyLabels,
+    );
+  }
+
+  if (row.action === 'admin.permissions.update') {
+    return formatChangedFields(row.before_value, row.after_value, permissionLabelMap);
+  }
+
+  if (row.action === 'store.settings.update') {
+    const beforeSetting = isRecord(row.before_value) ? unwrapSettingValue(row.before_value.setting) : null;
+    const afterSetting = isRecord(row.after_value) ? unwrapSettingValue(row.after_value.setting) : null;
+    const settingSummary = formatChangedFields(beforeSetting, afterSetting, storeSettingLabels);
+    const scheduleChanged =
+      isRecord(row.before_value) &&
+      isRecord(row.after_value) &&
+      JSON.stringify(row.before_value.schedule ?? null) !== JSON.stringify(row.after_value.schedule ?? null);
+
+    return scheduleChanged
+      ? `${settingSummary}, 영업시간 변경됨`
+      : settingSummary;
+  }
+
   return `이전: ${stringifyAuditValue(row.before_value)} / 이후: ${stringifyAuditValue(row.after_value)}`;
 }
 
@@ -865,7 +1011,7 @@ export function toAuditLogViewItem(row: AuditLogRow): AuditLogViewItem {
     id: row.id,
     actorName,
     actorRole: row.actor?.role ? getRoleLabel(row.actor.role) : '역할 없음',
-    action: row.action,
+    action: getAuditActionLabel(row.action),
     target: getAuditTarget(row),
     detail: getAuditDetail(row),
     ip: row.ip_address ?? '-',

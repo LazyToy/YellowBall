@@ -47,8 +47,29 @@ export const createNoShowService = (client: NoShowClient) => ({
     return count ?? 0;
   },
 
+  async getNoShowSuspensionCount(userId: string): Promise<number> {
+    const { data, error } = await client
+      .from('profiles')
+      .select('no_show_suspension_count')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (error) {
+      throw toServiceError('Unable to load no-show suspension history.', error);
+    }
+
+    return data?.no_show_suspension_count ?? 0;
+  },
+
   async isBookingRestricted(userId: string): Promise<boolean> {
-    return (await this.getNoShowCount(userId)) >= NO_SHOW_RESTRICTION_COUNT;
+    const noShowCount = await this.getNoShowCount(userId);
+
+    if (noShowCount < NO_SHOW_RESTRICTION_COUNT) {
+      return false;
+    }
+
+    const suspensionCount = await this.getNoShowSuspensionCount(userId);
+    return noShowCount > suspensionCount;
   },
 });
 

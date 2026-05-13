@@ -7,6 +7,11 @@ import type {
 } from '@supabase/supabase-js';
 
 import { AUTH_SESSION_STORAGE_KEY } from '@/constants/auth';
+import {
+  createDefaultOperationPolicySettings,
+  createOperationPolicyService,
+  type OperationPolicySettings,
+} from '@/services/operationPolicyService';
 import type { Database, Profile } from '@/types/database';
 
 type AuthClient = Pick<SupabaseClient<Database>, 'auth' | 'functions' | 'from'>;
@@ -14,6 +19,9 @@ type RpcAuthClient = AuthClient & Pick<SupabaseClient<Database>, 'rpc'>;
 type SessionStorage = {
   removeItem: (key: string) => Promise<void>;
   storageKey?: string;
+};
+type OperationPolicyService = {
+  getSettings: () => Promise<OperationPolicySettings>;
 };
 
 export type SignInResult = {
@@ -114,11 +122,18 @@ const toSignUpError = (error: unknown) => {
     return new Error('이미 가입된 이메일입니다.');
   }
 
+  if (/database error saving new user/i.test(message)) {
+    return new Error('이미 사용 중인 이메일 또는 아이디입니다.');
+  }
+
   return new Error(toErrorMessage('회원가입에 실패했습니다.', error));
 };
 
-const getBlockedAccountError = (profile: Profile) => {
-  if (profile.status === 'suspended') {
+const getBlockedAccountError = (
+  profile: Profile,
+  policy: OperationPolicySettings,
+) => {
+  if (profile.status === 'suspended' && policy.suspendedLoginBlocked) {
     return new Error('계정이 제재되었습니다.');
   }
 
@@ -146,6 +161,15 @@ const fetchProfile = async (client: AuthClient, userId: string) => {
 
   return data;
 };
+
+const createDefaultAuthPolicyService = (
+  client: AuthClient,
+): OperationPolicyService =>
+  process.env.NODE_ENV === 'test'
+    ? {
+        getSettings: async () => createDefaultOperationPolicySettings(),
+      }
+    : createOperationPolicyService(client);
 
 const getOAuthRedirectUrl = async (
   provider: SocialAuthProvider,
@@ -208,6 +232,8 @@ export const createAuthService = (
     storageKey: AUTH_SESSION_STORAGE_KEY,
   },
   oauthDependencies: OAuthDependencies = {},
+  operationPolicyService: OperationPolicyService =
+    createDefaultAuthPolicyService(client),
 ): AuthService => ({
   async signUp(email, password, username, nickname) {
     try {
@@ -308,7 +334,8 @@ export const createAuthService = (
       }
 
       const profile = await fetchProfile(client, data.user.id);
-      const blockedError = getBlockedAccountError(profile);
+      const policy = await operationPolicyService.getSettings();
+      const blockedError = getBlockedAccountError(profile, policy);
 
       if (blockedError) {
         await client.auth.signOut();
@@ -422,7 +449,8 @@ export const createAuthService = (
       }
 
       const profile = await fetchProfile(client, authResult.data.user.id);
-      const blockedError = getBlockedAccountError(profile);
+      const policy = await operationPolicyService.getSettings();
+      const blockedError = getBlockedAccountError(profile, policy);
 
       if (blockedError) {
         await client.auth.signOut();

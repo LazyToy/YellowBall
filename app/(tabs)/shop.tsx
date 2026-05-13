@@ -4,20 +4,19 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
   useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 
+import { Text, TextInput } from '@/components/AppText';
 import { AppIcon } from '@/components/AppIcon';
+import { FeedbackDialog } from '@/components/FeedbackDialog';
 import {
   AppScrollView,
   Card,
   PageHeader,
   ProductThumb,
-  RowButton,
   SectionHeader,
 } from '@/components/MobileUI';
 import { lightColors, theme } from '@/constants/theme';
@@ -35,8 +34,11 @@ import {
   toggleShopWishlistItem,
   useShopWishlist,
 } from '@/stores/shopWishlistStore';
+import { getTwoColumnItemWidth } from '@/utils/responsiveLayout';
 
 const formatPrice = (value: number) => value.toLocaleString('ko-KR');
+const screenHorizontalPadding = theme.spacing[5];
+const productCardGap = theme.spacing[2];
 const removedShopCategories = new Set(['가방', '가발', '의류', '신발']);
 
 const isVisibleShopCategory = (category: string) =>
@@ -53,6 +55,10 @@ export default function ShopScreen() {
   const [showFilterOptions, setShowFilterOptions] = useState(false);
   const [saleOnly, setSaleOnly] = useState(false);
   const [message, setMessage] = useState<string>();
+  const [wishlistDialog, setWishlistDialog] = useState<{
+    title: string;
+    message?: string;
+  } | null>(null);
   const wishlistItems = useShopWishlist();
 
   const resetForm = useCallback(() => {
@@ -61,6 +67,7 @@ export default function ShopScreen() {
     setShowFilterOptions(false);
     setSaleOnly(false);
     setMessage(undefined);
+    setWishlistDialog(null);
   }, [filters]);
 
   useResetOnBlur(resetForm);
@@ -121,25 +128,40 @@ export default function ShopScreen() {
     () => new Set(wishlistItems.map((item) => item.id)),
     [wishlistItems],
   );
-
-  const productCardWidth = useMemo(() => {
-    const sectionHorizontalPadding = theme.spacing[5] * 2;
-    const cardGap = theme.spacing[3];
-    const gridWidth = Math.max(0, windowWidth - sectionHorizontalPadding);
-
-    return Math.max(0, Math.floor((gridWidth - cardGap) / 2));
-  }, [windowWidth]);
+  const visibleContentWidth = useMemo(
+    () => Math.max(0, Math.floor(windowWidth - screenHorizontalPadding * 2)),
+    [windowWidth],
+  );
+  const productCardWidth = getTwoColumnItemWidth(
+    visibleContentWidth,
+    productCardGap,
+  );
 
   const handleWishlistPress = (
     event: GestureResponderEvent | undefined,
     product: ShopProduct,
   ) => {
     event?.stopPropagation();
+    const wasSelected = favoriteIds.has(product.id);
     toggleShopWishlistItem(product);
+    setWishlistDialog({
+      title: wasSelected
+        ? '찜 목록에서 해제되었습니다'
+        : '찜 목록에 추가되었습니다',
+      message: wasSelected
+        ? '확인을 누르면 상품 목록으로 돌아갑니다.'
+        : '장바구니 버튼에서 찜한 상품을 확인할 수 있습니다.',
+    });
   };
 
   return (
     <AppScrollView contentContainerStyle={styles.content}>
+      <FeedbackDialog
+        visible={wishlistDialog !== null}
+        title={wishlistDialog?.title ?? ''}
+        message={wishlistDialog?.message}
+        onConfirm={() => setWishlistDialog(null)}
+      />
       <PageHeader
         title="샵"
         right={
@@ -279,15 +301,16 @@ export default function ShopScreen() {
         />
         {message ? <Text style={styles.messageText}>{message}</Text> : null}
         <View style={styles.productGrid}>
-          {filteredProducts.map((product) => {
+          {filteredProducts.map((product, index) => {
             const discount = Math.round(
               (1 - product.sale / product.price) * 100,
             );
             const selected = favoriteIds.has(product.id);
 
             return (
-              <RowButton
+              <Pressable
                 accessibilityLabel={`${product.name} 보기`}
+                accessibilityRole="button"
                 key={product.id}
                 onPress={() => {
                   router.push({
@@ -295,7 +318,21 @@ export default function ShopScreen() {
                     params: { from: '/shop', id: product.id },
                   });
                 }}
-                style={[styles.productCard, { width: productCardWidth }]}
+                style={[
+                  styles.productCard,
+                  productCardWidth > 0
+                    ? { width: productCardWidth }
+                    : styles.productCardFallback,
+                  productCardWidth > 0
+                    ? { flexBasis: productCardWidth }
+                    : null,
+                  productCardWidth > 0
+                    ? { maxWidth: productCardWidth }
+                    : null,
+                  productCardWidth > 0 && index % 2 === 0
+                    ? styles.productCardSpacing
+                    : null,
+                ]}
               >
                 <View style={styles.thumbWrap}>
                   <ProductThumb
@@ -352,7 +389,7 @@ export default function ShopScreen() {
                     <Text style={styles.reviewText}>({product.reviews})</Text>
                   </View>
                 </View>
-              </RowButton>
+              </Pressable>
             );
           })}
         </View>
@@ -394,7 +431,7 @@ const styles = StyleSheet.create({
   searchSection: {
     flexDirection: 'row',
     gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[5],
+    paddingHorizontal: screenHorizontalPadding,
   },
   searchBox: {
     alignItems: 'center',
@@ -429,7 +466,7 @@ const styles = StyleSheet.create({
   filterOptions: {
     flexDirection: 'row',
     gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[5],
+    paddingHorizontal: screenHorizontalPadding,
   },
   filterOption: {
     alignItems: 'center',
@@ -457,7 +494,7 @@ const styles = StyleSheet.create({
   filterList: {
     flexDirection: 'row',
     gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[5],
+    paddingHorizontal: screenHorizontalPadding,
   },
   filterPill: {
     backgroundColor: lightColors.card.hex,
@@ -483,7 +520,7 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: theme.spacing[3],
-    paddingHorizontal: theme.spacing[5],
+    paddingHorizontal: screenHorizontalPadding,
   },
   featuredCard: {
     backgroundColor: lightColors.primary.hex,
@@ -541,9 +578,10 @@ const styles = StyleSheet.create({
     width: 148,
   },
   productGrid: {
+    alignContent: 'flex-start',
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    width: '100%',
   },
   messageText: {
     color: lightColors.mutedForeground.hex,
@@ -552,13 +590,23 @@ const styles = StyleSheet.create({
   },
   productCard: {
     alignItems: 'stretch',
+    alignSelf: 'flex-start',
     backgroundColor: lightColors.card.hex,
     borderColor: lightColors.border.hex,
     borderRadius: theme.borderRadius.lg,
     borderWidth: theme.borderWidth.hairline,
+    flexGrow: 0,
+    flexShrink: 0,
     flexDirection: 'column',
+    minWidth: 0,
     marginBottom: theme.spacing[3],
     overflow: 'hidden',
+  },
+  productCardSpacing: {
+    marginRight: productCardGap,
+  },
+  productCardFallback: {
+    width: '48%',
   },
   thumbWrap: {
     position: 'relative',
@@ -594,6 +642,7 @@ const styles = StyleSheet.create({
   },
   productInfo: {
     gap: theme.spacing[1],
+    minWidth: 0,
     padding: theme.spacing[3],
   },
   productCategory: {
@@ -612,6 +661,7 @@ const styles = StyleSheet.create({
   priceRow: {
     alignItems: 'baseline',
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: theme.spacing[1],
     marginTop: theme.spacing[1],
   },
@@ -623,6 +673,7 @@ const styles = StyleSheet.create({
   },
   salePrice: {
     color: lightColors.foreground.hex,
+    flexShrink: 1,
     fontFamily: theme.typography.fontFamily.display,
     fontSize: 14,
     fontWeight: theme.typography.fontWeight.bold,

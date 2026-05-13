@@ -1,5 +1,6 @@
 import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 
 const mockPush = jest.fn();
 const mockGetMyBookings = jest.fn();
@@ -24,6 +25,13 @@ jest.mock('../src/services/bookingService', () => ({
 jest.mock('../src/services/demoBookingService', () => ({
   getMyDemoBookings: mockGetMyDemoBookings,
 }));
+
+const flattenStyle = (style: unknown) =>
+  StyleSheet.flatten(
+    typeof style === 'function'
+      ? style({ pressed: false, hovered: false, focused: false })
+      : style,
+  );
 
 const bookingBase = {
   user_id: 'user-1',
@@ -94,5 +102,132 @@ describe('BookingScreen', () => {
       pathname: '/booking-detail',
       params: { id: 'past-booking' },
     });
+  });
+
+  test('새 예약 만들기 CTA를 누르면 새 예약 화면으로 이동한다', async () => {
+    const BookingScreen = require('../app/(tabs)/booking').default;
+    const screen = render(<BookingScreen />);
+
+    await waitFor(() => expect(mockGetMyBookings).toHaveBeenCalledWith('user-1'));
+
+    fireEvent.press(screen.getByLabelText('스트링 작업 예약'));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/new-booking',
+      params: { mode: 'stringing' },
+    });
+
+    fireEvent.press(screen.getByLabelText('라켓 시타 예약'));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/new-booking',
+      params: { mode: 'demo' },
+    });
+  });
+
+  test('새 예약 만들기 항목은 Android에서도 카드형 한 줄 레이아웃을 유지한다', async () => {
+    const BookingScreen = require('../app/(tabs)/booking').default;
+    const screen = render(<BookingScreen />);
+
+    await waitFor(() => expect(mockGetMyBookings).toHaveBeenCalledWith('user-1'));
+
+    const ctaSurfaceStyle = flattenStyle(
+      screen.getByTestId('booking-cta-string-booking-surface').props.style,
+    );
+
+    expect(ctaSurfaceStyle).toEqual(
+      expect.objectContaining({
+        backgroundColor: '#ffffff',
+        borderColor: '#dfded7',
+        borderWidth: 1,
+        minHeight: 104,
+        overflow: 'hidden',
+        width: '100%',
+      }),
+    );
+    expect(
+      flattenStyle(screen.getByTestId('booking-cta-string-booking').props.style),
+    ).toEqual(
+      expect.objectContaining({
+        minHeight: 104,
+        width: '100%',
+      }),
+    );
+
+    expect(
+      StyleSheet.flatten(
+        screen.getByTestId('booking-cta-string-booking-row').props.style,
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        alignItems: 'center',
+        flexDirection: 'row',
+        flexWrap: 'nowrap',
+        minHeight: 104,
+        minWidth: 0,
+        paddingHorizontal: expect.any(Number),
+        paddingVertical: expect.any(Number),
+        width: '100%',
+      }),
+    );
+    expect(
+      StyleSheet.flatten(
+        screen.getByTestId('booking-cta-string-booking-content').props.style,
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        flex: 1,
+        flexShrink: 1,
+        marginRight: expect.any(Number),
+        minWidth: 0,
+      }),
+    );
+  });
+
+  test('진행 중 스트링 작업 카드는 Android에서도 흰색 표면과 줄바꿈 가능한 상세 박스를 유지한다', async () => {
+    const BookingScreen = require('../app/(tabs)/booking').default;
+    const screen = render(<BookingScreen />);
+
+    await waitFor(() => expect(mockGetMyBookings).toHaveBeenCalledWith('user-1'));
+
+    expect(
+      flattenStyle(screen.getByTestId('service-booking-card-surface').props.style),
+    ).toEqual(
+      expect.objectContaining({
+        backgroundColor: '#ffffff',
+        borderColor: '#dfded7',
+        borderWidth: 1,
+        overflow: 'hidden',
+        width: '100%',
+      }),
+    );
+    expect(
+      StyleSheet.flatten(screen.getByTestId('service-booking-card-content').props.style),
+    ).toEqual(
+      expect.objectContaining({
+        flexDirection: 'column',
+        paddingHorizontal: expect.any(Number),
+        paddingVertical: expect.any(Number),
+        width: '100%',
+      }),
+    );
+    expect(
+      StyleSheet.flatten(screen.getByTestId('service-booking-detail-box').props.style),
+    ).toEqual(
+      expect.objectContaining({
+        alignSelf: 'stretch',
+        backgroundColor: '#f0efe7',
+        padding: expect.any(Number),
+      }),
+    );
+    expect(
+      StyleSheet.flatten(
+        screen.getByTestId('service-booking-detail-value-스트링').props.style,
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        flexShrink: 1,
+        minWidth: 0,
+        textAlign: 'right',
+      }),
+    );
   });
 });

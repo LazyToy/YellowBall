@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { Button } from '@/components/Button';
+import { Text } from '@/components/AppText';
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
 import { FeedbackDialog } from '@/components/FeedbackDialog';
 import {
@@ -68,6 +69,9 @@ type MeMenuGroup = {
     menuId?: MenuId | null;
   }[];
 };
+
+const screenHorizontalPadding = theme.spacing[5];
+const statsGridPadding = theme.spacing[3];
 
 const menuGroups: MeMenuGroup[] = [
   {
@@ -313,7 +317,6 @@ export default function MeScreen() {
       items: group.items.filter((item) => !item.menuId || menuSettings[item.menuId]),
     }))
     .filter((group) => group.items.length > 0);
-
   return (
     <AppScrollView>
       <FeedbackDialog
@@ -393,8 +396,8 @@ export default function MeScreen() {
       </View>
 
       <View style={styles.section}>
-        <Card style={styles.statsGrid}>
-          {stats.map((item) => (
+        <Card style={styles.statsGrid} testID="me-stats-grid">
+          {stats.map((item, index) => (
             <Pressable
               accessibilityLabel={item.label}
               accessibilityRole="button"
@@ -403,6 +406,7 @@ export default function MeScreen() {
                 styles.statItem,
                 pressed && styles.pressed,
               ]}
+              testID={`me-stat-${item.icon}`}
             >
               <AppIcon
                 color={lightColors.primary.hex}
@@ -410,7 +414,9 @@ export default function MeScreen() {
                 size={18}
               />
               <Text style={styles.statValue}>{item.value}</Text>
-              <Text style={styles.statLabel}>{item.label}</Text>
+              <Text numberOfLines={1} style={styles.statLabel}>
+                {item.label}
+              </Text>
             </Pressable>
           ))}
         </Card>
@@ -528,22 +534,29 @@ export default function MeScreen() {
             <Text style={styles.menuGroupTitle}>{group.title}</Text>
             <Card style={styles.menuCard}>
               {group.items.map((item, index) => (
-                <RowButton
+                <Pressable
                   accessibilityLabel={item.label}
+                  accessibilityRole="button"
                   key={item.label}
                   onPress={() => handleMenuPress(item)}
                   style={[
                     styles.menuItem,
-                    index !== group.items.length - 1 && styles.menuItemDivider,
+                    index !== group.items.length - 1
+                      ? styles.menuItemDivider
+                      : null,
                   ]}
                 >
-                  <GlyphBubble glyph={item.glyph} tone="secondary" size={32} />
-                  <Text style={styles.menuLabel}>{item.label}</Text>
+                  <View style={styles.menuIconSlot}>
+                    <GlyphBubble glyph={item.glyph} tone="secondary" size={32} />
+                  </View>
+                  <Text numberOfLines={1} style={styles.menuLabel}>
+                    {item.label}
+                  </Text>
                   {'badge' in item && item.badge ? (
                     <Pill>{item.badge}</Pill>
                   ) : null}
                   <Chevron />
-                </RowButton>
+                </Pressable>
               ))}
             </Card>
           </View>
@@ -576,7 +589,9 @@ export default function MeScreen() {
 function ProfileMetric({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.metricItem}>
-      <Text style={styles.metricLabel}>{label}</Text>
+      <Text numberOfLines={1} style={styles.metricLabel}>
+        {label}
+      </Text>
       <Text style={styles.metricValue}>{value}</Text>
     </View>
   );
@@ -585,7 +600,7 @@ function ProfileMetric({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   section: {
     gap: theme.spacing[3],
-    paddingHorizontal: theme.spacing[5],
+    paddingHorizontal: screenHorizontalPadding,
   },
   settingsButton: {
     alignItems: 'center',
@@ -680,10 +695,12 @@ const styles = StyleSheet.create({
     borderRadius: theme.borderRadius.md,
     flexDirection: 'row',
     padding: theme.spacing[3],
+    width: '100%',
   },
   metricItem: {
     alignItems: 'center',
     flex: 1,
+    minWidth: 0,
   },
   metricLabel: {
     color: 'rgba(252,250,244,0.72)',
@@ -703,12 +720,16 @@ const styles = StyleSheet.create({
   },
   statsGrid: {
     flexDirection: 'row',
-    padding: theme.spacing[3],
+    justifyContent: 'space-between',
+    overflow: 'hidden',
+    padding: statsGridPadding,
+    width: '100%',
   },
   statItem: {
     alignItems: 'center',
     borderRadius: theme.borderRadius.md,
     flex: 1,
+    minWidth: 0,
     paddingVertical: theme.spacing[2],
   },
   statValue: {
@@ -722,6 +743,7 @@ const styles = StyleSheet.create({
     color: lightColors.mutedForeground.hex,
     fontFamily: theme.typography.fontFamily.body,
     fontSize: 10,
+    maxWidth: '100%',
   },
   linkText: {
     color: lightColors.primary.hex,
@@ -760,7 +782,7 @@ const styles = StyleSheet.create({
   },
   menuSection: {
     gap: theme.spacing[5],
-    paddingHorizontal: theme.spacing[5],
+    paddingHorizontal: screenHorizontalPadding,
   },
   menuGroup: {
     gap: theme.spacing[2],
@@ -776,10 +798,14 @@ const styles = StyleSheet.create({
   menuCard: {
     overflow: 'hidden',
     padding: 0,
+    width: '100%',
   },
   menuItem: {
-    gap: theme.spacing[3],
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    flexDirection: 'row',
     minHeight: 56,
+    minWidth: 0,
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[3],
   },
@@ -787,16 +813,23 @@ const styles = StyleSheet.create({
     borderBottomColor: lightColors.border.hex,
     borderBottomWidth: theme.borderWidth.hairline,
   },
+  menuIconSlot: {
+    flexShrink: 0,
+    marginRight: theme.spacing[3],
+  },
   menuLabel: {
     color: lightColors.foreground.hex,
     flex: 1,
+    flexShrink: 1,
     fontFamily: theme.typography.fontFamily.body,
     fontSize: 14,
+    marginRight: theme.spacing[3],
+    minWidth: 0,
   },
   footer: {
     alignItems: 'center',
     gap: theme.spacing[3],
-    paddingHorizontal: theme.spacing[5],
+    paddingHorizontal: screenHorizontalPadding,
     paddingTop: theme.spacing[2],
   },
   footerText: {
@@ -808,13 +841,13 @@ const styles = StyleSheet.create({
     color: lightColors.destructive.hex,
     fontFamily: theme.typography.fontFamily.body,
     fontSize: 12,
-    paddingHorizontal: theme.spacing[5],
+    paddingHorizontal: screenHorizontalPadding,
   },
   successText: {
     color: lightColors.primary.hex,
     fontFamily: theme.typography.fontFamily.body,
     fontSize: 12,
-    paddingHorizontal: theme.spacing[5],
+    paddingHorizontal: screenHorizontalPadding,
   },
   flex: {
     flex: 1,

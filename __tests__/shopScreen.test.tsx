@@ -184,4 +184,18 @@ describe('ShopScreen', () => {
 
     expect(mockPush).toHaveBeenCalledWith('/shop-wishlist');
   });
+
+  test('상품 찜 추가와 해제 후 알림창을 표시한다', async () => {
+    const ShopScreen = require('../app/(tabs)/shop').default;
+    const screen = render(<ShopScreen />);
+
+    await waitFor(() => expect(screen.getByLabelText('Wilson Pro Staff 찜')).toBeTruthy());
+
+    fireEvent.press(screen.getByLabelText('Wilson Pro Staff 찜'));
+    expect(screen.getByText('찜 목록에 추가되었습니다')).toBeTruthy();
+    fireEvent.press(screen.getByText('확인'));
+
+    fireEvent.press(screen.getByLabelText('Wilson Pro Staff 찜'));
+    expect(screen.getByText('찜 목록에서 해제되었습니다')).toBeTruthy();
+  });
 });

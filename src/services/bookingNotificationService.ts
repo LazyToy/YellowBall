@@ -9,6 +9,11 @@ import type {
   Json,
   ServiceBookingStatus,
 } from '@/types/database';
+import {
+  createDefaultOperationPolicySettings,
+  createOperationPolicyService,
+  type OperationPolicySettings,
+} from './operationPolicyService';
 
 type FunctionInvokeResult = {
   data: { notification?: AppNotification } | AppNotification | null;
@@ -22,6 +27,10 @@ type BookingNotificationClient = Pick<SupabaseClient<Database>, 'from'> & {
       options: { body: Record<string, unknown> },
     ) => Promise<FunctionInvokeResult>;
   };
+};
+
+type BookingNotificationPolicyService = {
+  getSettings: () => Promise<OperationPolicySettings>;
 };
 
 export type BookingNotificationInput = {
@@ -229,6 +238,33 @@ const resolveInvokedNotification = (
   return null;
 };
 
+const createDefaultBookingNotificationPolicyService = (
+  client: BookingNotificationClient,
+): BookingNotificationPolicyService => {
+  if (process.env.NODE_ENV === 'test') {
+    return {
+      getSettings: async () => createDefaultOperationPolicySettings(),
+    };
+  }
+
+  return createOperationPolicyService(client);
+};
+
+const shouldCreateStatusNotification = (
+  input: BookingNotificationInput,
+  settings: OperationPolicySettings,
+) => {
+  if (input.status === 'approved') {
+    return settings.notifyBookingConfirmation;
+  }
+
+  if (input.bookingType === 'service' && input.status === 'pickup_ready') {
+    return settings.notifyPickupReady;
+  }
+
+  return true;
+};
+
 const getPushToken = async (
   client: BookingNotificationClient,
   userId: string,
@@ -272,6 +308,8 @@ const insertNotificationDirectly = async (
 export const createBookingNotificationService = (
   client: BookingNotificationClient,
   now: () => Date = () => new Date(),
+  policyService: BookingNotificationPolicyService =
+    createDefaultBookingNotificationPolicyService(client),
 ) => ({
   async createStatusNotification(
     input: BookingNotificationInput,
@@ -289,6 +327,12 @@ export const createBookingNotificationService = (
     }
 
     if (preferences?.booking_notifications === false) {
+      return null;
+    }
+
+    const policySettings = await policyService.getSettings();
+
+    if (!shouldCreateStatusNotification(input, policySettings)) {
       return null;
     }
 

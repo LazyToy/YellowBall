@@ -19,6 +19,7 @@ import {
   mergeStoreSettings,
   normalizeAdminPermissions,
   normalizeShopSchedule,
+  toAuditLogViewItem,
 } from '../apps/admin-web/lib/super-admin-data';
 
 describe('admin web super admin data', () => {
@@ -270,5 +271,78 @@ describe('admin web super admin data', () => {
     expect(sanitizeAdminNextPath('/booking/string/new')).toBe('/booking/string/new');
     expect(sanitizeAdminNextPath('https://evil.example/admin')).toBe('/admin');
     expect(sanitizeAdminNextPath('/admin-login')).toBe('/admin');
+  });
+
+  test('감사 로그 메뉴 변경은 변경된 메뉴만 사람이 읽는 문장으로 요약한다', () => {
+    const item = toAuditLogViewItem({
+      id: 'audit-1',
+      actor_id: 'admin-1',
+      action: 'app.menu.update',
+      target_table: 'app_settings',
+      target_id: null,
+      before_value: {
+        value: {
+          menus: {
+            shop: false,
+            'demo-booking': false,
+          },
+        },
+      },
+      after_value: {
+        value: {
+          menus: {
+            shop: true,
+            'demo-booking': false,
+          },
+        },
+      },
+      ip_address: null,
+      user_agent: null,
+      created_at: '2026-05-07T01:58:12.604Z',
+      actor: {
+        nickname: '운영자',
+        username: null,
+        email: null,
+        role: 'super_admin',
+      },
+    });
+
+    expect(item.action).toBe('앱 메뉴 노출 변경');
+    expect(item.detail).toBe('상품 쇼핑: OFF -> ON');
+  });
+
+  test('감사 로그 정책 변경은 변경된 정책 값만 요약한다', () => {
+    const item = toAuditLogViewItem({
+      id: 'audit-2',
+      actor_id: 'admin-1',
+      action: 'app.policy.update',
+      target_table: 'app_settings',
+      target_id: null,
+      before_value: {
+        value: {
+          bookingMaxDaysAhead: 14,
+          notifyMarketing: false,
+        },
+      },
+      after_value: {
+        value: {
+          bookingMaxDaysAhead: 30,
+          notifyMarketing: true,
+        },
+      },
+      ip_address: null,
+      user_agent: null,
+      created_at: '2026-05-07T01:58:12.604Z',
+      actor: {
+        nickname: '운영자',
+        username: null,
+        email: null,
+        role: 'super_admin',
+      },
+    });
+
+    expect(item.action).toBe('운영 정책 변경');
+    expect(item.detail).toContain('최대 예약 가능 일수: 14 -> 30');
+    expect(item.detail).toContain('마케팅 알림 발송: OFF -> ON');
   });
 });

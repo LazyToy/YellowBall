@@ -1,5 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import {
+  createDefaultOperationPolicySettings,
+  createOperationPolicyService,
+  type OperationPolicySettings,
+} from './operationPolicyService';
 import { defaultShopSchedule, type DayOfWeek } from './scheduleService';
 import type {
   BookingServiceType,
@@ -16,6 +21,9 @@ import {
 } from '@/utils/kstDateTime';
 
 type SlotClient = Pick<SupabaseClient<Database>, 'from' | 'rpc'>;
+type OperationPolicyService = {
+  getSettings: () => Promise<OperationPolicySettings>;
+};
 
 type ScheduleRow = {
   day_of_week: DayOfWeek;
@@ -102,8 +110,30 @@ const isSlotWithinSchedule = (
     endDate === date &&
     startTime >= openTime &&
     endTime <= closeTime
-  );
+);
 };
+
+const getMinimumStartIso = (
+  date: string,
+  policy: OperationPolicySettings,
+  now = new Date(),
+) => {
+  const range = kstDateRangeToIso(date);
+  const policyMinimum = new Date(
+    now.getTime() + policy.bookingOpenHoursBefore * 60 * 60 * 1000,
+  ).toISOString();
+
+  return policyMinimum > range.start ? policyMinimum : range.start;
+};
+
+const createDefaultSlotPolicyService = (
+  client: SlotClient,
+): OperationPolicyService =>
+  process.env.NODE_ENV === 'test'
+    ? {
+        getSettings: async () => createDefaultOperationPolicySettings(),
+      }
+    : createOperationPolicyService(client);
 
 const assertAdmin = async (client: SlotClient, actorId: string) => {
   const { data, error } = await client
@@ -193,7 +223,11 @@ const buildSlotRows = (
   return rows;
 };
 
-export const createSlotService = (client: SlotClient) => ({
+export const createSlotService = (
+  client: SlotClient,
+  operationPolicyService: OperationPolicyService =
+    createDefaultSlotPolicyService(client),
+) => ({
   async generateSlots(
     actorId: string,
     date: string,
@@ -243,11 +277,12 @@ export const createSlotService = (client: SlotClient) => ({
       return [];
     }
 
+    const policy = await operationPolicyService.getSettings();
     const { error: ensureError } = await client.rpc('ensure_booking_slots_for_date', {
       p_date: date,
       p_service_type: serviceType,
       p_duration_min: 60,
-      p_capacity: 1,
+      p_capacity: policy.maxConcurrentBookings,
     });
 
     if (ensureError) {
@@ -261,10 +296,7 @@ export const createSlotService = (client: SlotClient) => ({
     }
 
     const range = kstDateRangeToIso(date);
-    const lowerBound =
-      date === formatKstDateKey() && new Date().toISOString() > range.start
-        ? new Date().toISOString()
-        : range.start;
+    const lowerBound = getMinimumStartIso(date, policy);
 
     const { data, error } = await client
       .from('booking_slots')
@@ -294,11 +326,12 @@ export const createSlotService = (client: SlotClient) => ({
     validateDate(date);
     validateServiceType(serviceType);
 
+    const policy = await operationPolicyService.getSettings();
     const { error: ensureError } = await client.rpc('ensure_booking_slots_for_date', {
       p_date: date,
       p_service_type: serviceType,
       p_duration_min: 60,
-      p_capacity: 1,
+      p_capacity: policy.maxConcurrentBookings,
     });
 
     if (ensureError) {
@@ -328,8 +361,12 @@ export const createSlotService = (client: SlotClient) => ({
       throw toServiceError('Unable to load booking slots.', error);
     }
 
-    return (data ?? []).filter((slot) =>
-      isSlotWithinSchedule(date, slot, schedule),
+    const minimumStart = getMinimumStartIso(date, policy);
+
+    return (data ?? []).filter(
+      (slot) =>
+        slot.start_time >= minimumStart &&
+        isSlotWithinSchedule(date, slot, schedule),
     );
   },
 

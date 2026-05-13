@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'expo-router';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Pressable, StyleSheet, View } from 'react-native';
 
+import { TextInput } from '@/components/AppText';
 import { Button } from '@/components/Button';
 import {
   CalendarPicker,
@@ -15,6 +16,7 @@ import { Typography } from '@/components/Typography';
 import { lightColors, theme } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 import { useAppMenuSettings } from '@/hooks/useAppMenuSettings';
+import { useOperationPolicySettings } from '@/hooks/useOperationPolicySettings';
 import { useResetOnBlur } from '@/hooks/useResetOnBlur';
 import { hasAnyBookingMenu } from '@/services/appMenuSettingsService';
 import {
@@ -83,13 +85,50 @@ const clampTension = (value: number) => {
   return Math.min(MAX_TENSION, Math.max(MIN_TENSION, Math.round(value)));
 };
 
+const getDefaultBookingMode = (
+  preferredMode: BookingMode | undefined,
+  canBookString: boolean,
+  canBookDemo: boolean,
+): BookingMode => {
+  if (preferredMode === 'demo' && canBookDemo) {
+    return 'demo';
+  }
+
+  if (preferredMode === 'stringing' && canBookString) {
+    return 'stringing';
+  }
+
+  return canBookString ? 'stringing' : 'demo';
+};
+
 const isSlotSelectable = (slot: BookingSlot) =>
   !slot.is_blocked &&
   slot.reserved_count < slot.capacity &&
   !isPastIsoDateTime(slot.start_time);
 
-const getFirstSelectableSlotId = (slotRows: BookingSlot[]) =>
-  slotRows.find(isSlotSelectable)?.id || '';
+const isSlotSelectableWithPolicy = (
+  slot: BookingSlot,
+  minimumStartIso: string,
+) => isSlotSelectable(slot) && slot.start_time >= minimumStartIso;
+
+const getFirstSelectableSlotId = (
+  slotRows: BookingSlot[],
+  minimumStartIso: string,
+) =>
+  slotRows.find((slot) =>
+    isSlotSelectableWithPolicy(slot, minimumStartIso),
+  )?.id || '';
+
+const addDaysToDateKey = (dateKey: string, days: number) => {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + Math.max(0, days));
+
+  return formatKstDateKey(date);
+};
+
+const getMinimumBookingStartIso = (hoursBefore: number) =>
+  new Date(Date.now() + Math.max(0, hoursBefore) * 60 * 60 * 1000).toISOString();
 
 const getSixMonthsAgo = () => {
   const cutoff = new Date();
@@ -122,10 +161,66 @@ const getRecentRebookCandidates = (bookings: ServiceBooking[]) => {
   });
 };
 
+type BusinessHours = {
+  startHour: number;
+  endHour: number;
+  minSelectableTime: string;
+  maxTime: string;
+};
+
+const normalizeScheduleTime = (value: string) => value.slice(0, 5);
+
+const getDayOfWeekForDateKey = (dateKey: string) => {
+  const [year, month, day] = dateKey.split('-').map(Number);
+
+  if (!year || !month || !day) {
+    return null;
+  }
+
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed.getUTCDay();
+};
+
+const getBusinessHoursForDate = (
+  dateKey: string,
+  schedule: ShopSchedule[],
+  closedDateRows: ClosedDate[],
+): BusinessHours | null => {
+  if (closedDateRows.some((entry) => entry.closed_date === dateKey)) {
+    return null;
+  }
+
+  const dayOfWeek = getDayOfWeekForDateKey(dateKey);
+  const daySchedule = schedule.find((entry) => entry.day_of_week === dayOfWeek);
+
+  if (!daySchedule || daySchedule.is_closed) {
+    return null;
+  }
+
+  const minSelectableTime = normalizeScheduleTime(daySchedule.open_time);
+  const maxTime = normalizeScheduleTime(daySchedule.close_time);
+  const startHour = Number(minSelectableTime.split(':')[0]);
+  const endHour = Number(maxTime.split(':')[0]);
+
+  if (!Number.isInteger(startHour) || !Number.isInteger(endHour)) {
+    return null;
+  }
+
+  return {
+    endHour,
+    maxTime,
+    minSelectableTime,
+    startHour,
+  };
+};
+
 export default function NewBookingScreen() {
   const router = useRouter();
+  const searchParams = useLocalSearchParams<{ mode?: string | string[] }>();
   const { profile } = useAuth();
   const menuSettings = useAppMenuSettings();
+  const operationPolicy = useOperationPolicySettings();
   const canBookString = menuSettings['string-booking'];
   const canBookDemo = menuSettings['demo-booking'];
   const bookingMenusVisible = hasAnyBookingMenu(menuSettings);
@@ -134,7 +229,19 @@ export default function NewBookingScreen() {
     ? ['store_pickup', 'local_quick', 'parcel']
     : ['store_pickup'];
   const profileId = profile?.id;
-  const [mode, setMode] = useState<BookingMode>('stringing');
+  const requestedMode = Array.isArray(searchParams.mode)
+    ? searchParams.mode[0]
+    : searchParams.mode;
+  const preferredMode: BookingMode | undefined =
+    requestedMode === 'demo' || requestedMode === 'stringing'
+      ? requestedMode
+      : undefined;
+  const defaultMode = getDefaultBookingMode(
+    preferredMode,
+    canBookString,
+    canBookDemo,
+  );
+  const [mode, setMode] = useState<BookingMode>(defaultMode);
   const [date, setDate] = useState(today());
   const [rackets, setRackets] = useState<UserRacket[]>([]);
   const [demoRackets, setDemoRackets] = useState<DemoRacket[]>([]);
@@ -164,9 +271,17 @@ export default function NewBookingScreen() {
     title: string;
     message?: string;
   } | null>(null);
+  const maxBookingDate = useMemo(
+    () => addDaysToDateKey(today(), operationPolicy.bookingMaxDaysAhead),
+    [operationPolicy.bookingMaxDaysAhead],
+  );
+  const minimumBookingStartIso = useMemo(
+    () => getMinimumBookingStartIso(operationPolicy.bookingOpenHoursBefore),
+    [operationPolicy.bookingOpenHoursBefore],
+  );
 
   const resetForm = useCallback(() => {
-    setMode(canBookString ? 'stringing' : 'demo');
+    setMode(defaultMode);
     setDate(today());
     setSelectedRacketId(rackets[0]?.id || '');
     setSelectedDemoRacketId(demoRackets[0]?.id || '');
@@ -176,7 +291,7 @@ export default function NewBookingScreen() {
     setTensionMain('48');
     setTensionCross('48');
     setSlotId(
-      getFirstSelectableSlotId(slots),
+      getFirstSelectableSlotId(slots, minimumBookingStartIso),
     );
     setDeliveryMethod('store_pickup');
     setAddressId(addresses.find((item) => item.is_default)?.id || '');
@@ -185,7 +300,15 @@ export default function NewBookingScreen() {
     setMessage(undefined);
     setSuccessDialog(null);
     setIsLoading(false);
-  }, [addresses, canBookString, demoRackets, rackets, slots, strings]);
+  }, [
+    addresses,
+    defaultMode,
+    demoRackets,
+    minimumBookingStartIso,
+    rackets,
+    slots,
+    strings,
+  ]);
 
   useResetOnBlur(resetForm);
 
@@ -231,11 +354,16 @@ export default function NewBookingScreen() {
     const slotRows = await getBookingSlotsForDate(date, mode);
     setSlots(slotRows);
     setSlotId((current) =>
-      current && slotRows.some((slot) => slot.id === current && isSlotSelectable(slot))
+      current &&
+      slotRows.some(
+        (slot) =>
+          slot.id === current &&
+          isSlotSelectableWithPolicy(slot, minimumBookingStartIso),
+      )
         ? current
-        : getFirstSelectableSlotId(slotRows),
+        : getFirstSelectableSlotId(slotRows, minimumBookingStartIso),
     );
-  }, [date, mode]);
+  }, [date, minimumBookingStartIso, mode]);
 
   useEffect(() => {
     loadBaseData().catch(() => setMessage('예약 데이터를 불러오지 못했습니다.'));
@@ -244,6 +372,12 @@ export default function NewBookingScreen() {
   useEffect(() => {
     loadSlots().catch(() => setMessage('예약 가능한 시간을 불러오지 못했습니다.'));
   }, [loadSlots]);
+
+  useEffect(() => {
+    if (preferredMode) {
+      setMode(defaultMode);
+    }
+  }, [defaultMode, preferredMode]);
 
   useEffect(() => {
     if (mode === 'stringing' && !canBookString && canBookDemo) {
@@ -284,12 +418,27 @@ export default function NewBookingScreen() {
     [slotId, slots],
   );
   const availableSlotCount = useMemo(
-    () => slots.filter(isSlotSelectable).length,
-    [slots],
+    () =>
+      slots.filter((slot) =>
+        isSlotSelectableWithPolicy(slot, minimumBookingStartIso),
+      ).length,
+    [minimumBookingStartIso, slots],
   );
   const businessHoursLabel = useMemo(
     () => getBusinessHoursLabel(date, shopSchedule, closedDates),
     [closedDates, date, shopSchedule],
+  );
+  const returnDateKey = useMemo(() => {
+    const referenceDateTime = expectedReturnTime || selectedSlot?.end_time || '';
+    const parsed = referenceDateTime ? new Date(referenceDateTime) : null;
+
+    return parsed && Number.isFinite(parsed.getTime())
+      ? formatKstDateKey(parsed)
+      : date;
+  }, [date, expectedReturnTime, selectedSlot?.end_time]);
+  const demoReturnBusinessHours = useMemo(
+    () => getBusinessHoursForDate(returnDateKey, shopSchedule, closedDates),
+    [closedDates, returnDateKey, shopSchedule],
   );
   const recentPreviousBookings = useMemo(
     () => getRecentRebookCandidates(previousBookings),
@@ -379,7 +528,10 @@ export default function NewBookingScreen() {
       return;
     }
 
-    if (!selectedSlot || !isSlotSelectable(selectedSlot)) {
+    if (
+      !selectedSlot ||
+      !isSlotSelectableWithPolicy(selectedSlot, minimumBookingStartIso)
+    ) {
       setMessage('현재 시간 이후의 예약 시간을 선택해 주세요.');
       await loadSlots();
       return;
@@ -475,57 +627,66 @@ export default function NewBookingScreen() {
       ) : null}
 
       {bookingMenusVisible && mode === 'stringing' ? (
-        <View style={styles.section}>
-          <RacketSelectPanel
-            items={rackets}
-            selectedId={selectedRacketId}
-            onSelect={setSelectedRacketId}
-          />
+        <>
+          <View style={styles.section}>
+            <Typography variant="h2">1. 라켓 선택</Typography>
+            <RacketSelectPanel
+              items={rackets}
+              selectedId={selectedRacketId}
+              onSelect={setSelectedRacketId}
+            />
+          </View>
 
-          <StringSelectPanel
-            items={strings}
-            isHybrid={!useSameTension}
-            mainStringId={mainStringId}
-            crossStringId={crossStringId}
-            onSelectMain={handleSelectString}
-            onSelectCross={setCrossStringId}
-          />
+          <View style={styles.section}>
+            <Typography variant="h2">2. 스트링 선택</Typography>
+            <StringSelectPanel
+              items={strings}
+              isHybrid={!useSameTension}
+              mainStringId={mainStringId}
+              crossStringId={crossStringId}
+              onSelectMain={handleSelectString}
+              onSelectCross={setCrossStringId}
+            />
+          </View>
 
-          <TensionSelectPanel
-            isUniform={useSameTension}
-            tensionMain={Number(tensionMain)}
-            tensionCross={Number(tensionCross)}
-            onModeChange={(isUniform) => {
-              setUseSameTension(isUniform);
-              if (isUniform) {
-                setTensionCross(tensionMain);
-                setCrossStringId(mainStringId);
-              } else if (!crossStringId) {
-                setCrossStringId(mainStringId);
-              }
-            }}
-            onTensionMainChange={(value) => {
-              const next = String(clampTension(value));
-              setTensionMain(next);
-              if (useSameTension) {
-                setTensionCross(next);
-              }
-            }}
-            onTensionCrossChange={(value) => setTensionCross(String(clampTension(value)))}
-          />
-
-          <Typography variant="h2">다시 예약</Typography>
-          <RebookHistoryPanel
-            items={recentPreviousBookings}
-            onSelect={applyRebook}
-          />
-        </View>
+          <View style={styles.section} testID="stringing-tension-section">
+            <Typography variant="h2">3. 텐션</Typography>
+            <TensionSelectPanel
+              isUniform={useSameTension}
+              tensionMain={Number(tensionMain)}
+              tensionCross={Number(tensionCross)}
+              onModeChange={(isUniform) => {
+                setUseSameTension(isUniform);
+                if (isUniform) {
+                  setTensionCross(tensionMain);
+                  setCrossStringId(mainStringId);
+                } else if (!crossStringId) {
+                  setCrossStringId(mainStringId);
+                }
+              }}
+              onTensionMainChange={(value) => {
+                const next = String(clampTension(value));
+                setTensionMain(next);
+                if (useSameTension) {
+                  setTensionCross(next);
+                }
+              }}
+              onTensionCrossChange={(value) => setTensionCross(String(clampTension(value)))}
+            />
+            <View style={styles.sectionSubgroup}>
+              <Typography variant="h2">다시 예약</Typography>
+              <RebookHistoryPanel
+                items={recentPreviousBookings}
+                onSelect={applyRebook}
+              />
+            </View>
+          </View>
+        </>
       ) : bookingMenusVisible ? (
         <View style={styles.section}>
-          <Typography variant="h2">1. 시타 라켓</Typography>
-          <PickerRow
+          <Typography variant="h2">1. 시타 라켓 선택</Typography>
+          <DemoRacketSelectPanel
             items={demoRackets}
-            labelOf={(item) => `${item.brand} ${item.model}`}
             selectedId={selectedDemoRacketId}
             onSelect={setSelectedDemoRacketId}
           />
@@ -537,6 +698,7 @@ export default function NewBookingScreen() {
         <Typography variant="h2">{mode === 'stringing' ? '4' : '2'}. 날짜/시간</Typography>
         <CalendarPicker
           getDateStatus={getBookingDateStatus}
+          maxDate={maxBookingDate}
           label="날짜"
           minDate={today()}
           selectedDate={date}
@@ -553,15 +715,22 @@ export default function NewBookingScreen() {
         </View>
         <SlotPickerRow
           items={slots}
+          minimumStartIso={minimumBookingStartIso}
+          label={mode === 'demo' ? '대여 예정 시간' : undefined}
           selectedId={slotId}
           onSelect={setSlotId}
         />
         {mode === 'demo' ? (
           <DateTimeCalendarPicker
+            endHour={demoReturnBusinessHours?.endHour ?? -1}
             label="반납 예정 시간"
+            maxTime={demoReturnBusinessHours?.maxTime}
             minDate={today()}
             minDateTime={new Date().toISOString()}
+            minSelectableTime={demoReturnBusinessHours?.minSelectableTime}
             onChange={setExpectedReturnTime}
+            startHour={demoReturnBusinessHours?.startHour ?? 0}
+            timeLabel="반납 예정 시간"
             value={expectedReturnTime}
           />
         ) : null}
@@ -608,7 +777,11 @@ export default function NewBookingScreen() {
           onChangeText={setUserNotes}
           value={userNotes}
         />
-        <Button loading={isLoading} onPress={handleSubmit}>
+        <Button
+          loading={isLoading}
+          onPress={handleSubmit}
+          testID="new-booking-submit-button"
+        >
           예약 접수
         </Button>
         {message ? (
@@ -741,6 +914,78 @@ function RacketSelectPanel({
                   {[item.weight ? `${item.weight}g` : null, item.grip_size ? `그립 ${item.grip_size}` : null]
                     .filter(Boolean)
                     .join(' · ') || '스펙 미등록'}
+                </Typography>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+const getDemoRacketSpecs = (item: DemoRacket) =>
+  [
+    item.weight ? `${item.weight}g` : null,
+    item.grip_size ? `그립 ${item.grip_size}` : null,
+    item.head_size ? `헤드 ${item.head_size}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ') || '스펙 미등록';
+
+function DemoRacketSelectPanel({
+  items,
+  selectedId,
+  onSelect,
+}: {
+  items: DemoRacket[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+}) {
+  if (items.length === 0) {
+    return (
+      <View style={styles.previewPanel}>
+        <Typography variant="body" style={styles.previewTitle}>
+          시타 라켓 선택
+        </Typography>
+        <Typography variant="caption" style={styles.muted}>
+          선택 가능한 항목이 없습니다.
+        </Typography>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.previewPanel}>
+      <View>
+        <Typography variant="body" style={styles.previewTitle}>
+          시타 라켓 선택
+        </Typography>
+        <Typography variant="caption" style={styles.muted}>
+          시타 라켓 DB에서 선택
+        </Typography>
+      </View>
+      <View style={styles.previewList}>
+        {items.map((item) => {
+          const active = selectedId === item.id;
+          const itemLabel = `${item.brand} ${item.model}`;
+
+          return (
+            <Pressable
+              accessibilityLabel={`시타 라켓 ${itemLabel}`}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              key={item.id}
+              onPress={() => onSelect(item.id)}
+              style={[styles.previewRow, active && styles.previewRowActive]}
+            >
+              <RadioMark active={active} />
+              <View style={styles.previewRowText}>
+                <Typography variant="body" style={styles.previewRowTitle}>
+                  {itemLabel}
+                </Typography>
+                <Typography variant="caption" style={styles.muted}>
+                  {getDemoRacketSpecs(item)}
                 </Typography>
               </View>
             </Pressable>
@@ -1035,10 +1280,14 @@ function TensionSelectPanel({
 
 function SlotPickerRow({
   items,
+  label,
+  minimumStartIso,
   selectedId,
   onSelect,
 }: {
   items: BookingSlot[];
+  label?: string;
+  minimumStartIso: string;
   selectedId: string;
   onSelect: (id: string) => void;
 }) {
@@ -1051,37 +1300,40 @@ function SlotPickerRow({
   }
 
   return (
-    <View style={styles.chipRow}>
-      {items.map((item) => {
-        const active = selectedId === item.id;
-        const selectable = isSlotSelectable(item);
+    <View style={styles.slotPickerGroup}>
+      {label ? <Typography variant="caption">{label}</Typography> : null}
+      <View style={styles.chipRow}>
+        {items.map((item) => {
+          const active = selectedId === item.id;
+          const selectable = isSlotSelectableWithPolicy(item, minimumStartIso);
 
-        return (
-          <Pressable
-            accessibilityLabel={`예약 시간 ${formatSlot(item)}`}
-            accessibilityRole="button"
-            accessibilityState={{ disabled: !selectable, selected: active }}
-            disabled={!selectable}
-            key={item.id}
-            onPress={() => onSelect(item.id)}
-            style={[
-              styles.chip,
-              active && styles.chipActive,
-              !selectable && styles.disabledSlotChip,
-            ]}
-          >
-            <Typography
-              variant="caption"
+          return (
+            <Pressable
+              accessibilityLabel={`예약 시간 ${formatSlot(item)}`}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !selectable, selected: active }}
+              disabled={!selectable}
+              key={item.id}
+              onPress={() => onSelect(item.id)}
               style={[
-                active && styles.chipTextActive,
-                !selectable && styles.disabledSlotText,
+                styles.chip,
+                active && styles.chipActive,
+                !selectable && styles.disabledSlotChip,
               ]}
             >
-              {formatSlot(item)}
-            </Typography>
-          </Pressable>
-        );
-      })}
+              <Typography
+                variant="caption"
+                style={[
+                  active && styles.chipTextActive,
+                  !selectable && styles.disabledSlotText,
+                ]}
+              >
+                {formatSlot(item)}
+              </Typography>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -1185,6 +1437,9 @@ const styles = StyleSheet.create({
     gap: theme.spacing[3],
     padding: theme.spacing[4],
   },
+  sectionSubgroup: {
+    gap: theme.spacing[3],
+  },
   sectionTitleRow: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -1216,6 +1471,9 @@ const styles = StyleSheet.create({
   chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    gap: theme.spacing[2],
+  },
+  slotPickerGroup: {
     gap: theme.spacing[2],
   },
   previewPanel: {

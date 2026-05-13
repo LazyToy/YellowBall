@@ -2,13 +2,13 @@ import React from 'react';
 import {
   StyleProp,
   StyleSheet,
-  Text,
   TextProps,
   View,
   ViewProps,
   ViewStyle,
 } from 'react-native';
 
+import { Text } from '@/components/AppText';
 import { sharedControlStyles, sharedTextStyles } from '../constants/componentStyles';
 import { lightColors, theme } from '../constants/theme';
 

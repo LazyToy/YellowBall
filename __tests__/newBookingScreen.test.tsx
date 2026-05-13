@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 
 const mockCreateBooking = jest.fn();
 const mockGetMyBookings = jest.fn();
@@ -12,11 +12,20 @@ const mockGetBookingSlotsForDate = jest.fn();
 const mockGetActiveStrings = jest.fn();
 const mockGetAddresses = jest.fn();
 const mockRouterBack = jest.fn();
+const mockRouterReplace = jest.fn();
+const mockAddNavigationListener = jest.fn();
 let mockMenuSettings: Record<string, boolean>;
+let mockSearchParams: Record<string, string>;
+let mockBlurHandler: (() => void) | undefined;
 
 jest.mock('expo-router', () => ({
+  useLocalSearchParams: () => mockSearchParams,
+  useNavigation: () => ({
+    addListener: mockAddNavigationListener,
+  }),
   useRouter: () => ({
     back: mockRouterBack,
+    replace: mockRouterReplace,
   }),
 }));
 
@@ -120,6 +129,10 @@ const demoRacket = {
   id: 'demo-1',
   brand: 'Head',
   model: 'Speed Demo',
+  grip_size: 'G2',
+  weight: 300,
+  head_size: '100',
+  description: '초중급 시타용',
 };
 
 const stringSlot = {
@@ -153,6 +166,15 @@ const demoSlot = {
 describe('NewBookingScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockBlurHandler = undefined;
+    mockAddNavigationListener.mockImplementation((eventName: string, handler: () => void) => {
+      if (eventName === 'blur') {
+        mockBlurHandler = handler;
+      }
+
+      return jest.fn();
+    });
+    mockSearchParams = {};
     mockGetRackets.mockResolvedValue([racket]);
     mockGetActiveStrings.mockResolvedValue([string, crossString]);
     mockGetAddresses.mockResolvedValue([]);
@@ -204,8 +226,9 @@ describe('NewBookingScreen', () => {
     expect(screen.getByText('정상영업')).toBeTruthy();
     expect(screen.getByText('휴무')).toBeTruthy();
     expect(screen.getByText('영업종료')).toBeTruthy();
-    expect(screen.getByText(/^영업시간 /)).toBeTruthy();
+    expect(screen.getByText(/^영업(시간| 종료) /)).toBeTruthy();
     expect(screen.getByText('예약 가능 1개')).toBeTruthy();
+    expect(screen.getByTestId('new-booking-submit-button')).toBeTruthy();
 
     fireEvent.press(screen.getByText('예약 접수'));
 
@@ -222,6 +245,36 @@ describe('NewBookingScreen', () => {
         }),
       ),
     );
+  });
+
+  test('스트링 예약 주요 입력은 날짜/시간처럼 번호가 있는 독립 섹션으로 보인다', async () => {
+    const NewBookingScreen = require('../app/(tabs)/new-booking').default;
+    const screen = render(<NewBookingScreen />);
+
+    await waitFor(() => expect(screen.getByText('Wilson Blade')).toBeTruthy());
+
+    expect(screen.getByText('1. 라켓 선택')).toBeTruthy();
+    expect(screen.getByText('2. 스트링 선택')).toBeTruthy();
+    expect(screen.getByText('3. 텐션')).toBeTruthy();
+    expect(screen.getByText('4. 날짜/시간')).toBeTruthy();
+    expect(screen.getByText('5. 수령 방식')).toBeTruthy();
+    expect(screen.getByText('6. 메모')).toBeTruthy();
+  });
+
+  test('다시 예약은 텐션과 같은 섹션 안에서 보인다', async () => {
+    mockGetMyBookings.mockResolvedValueOnce([previousBooking]);
+    const NewBookingScreen = require('../app/(tabs)/new-booking').default;
+    const screen = render(<NewBookingScreen />);
+
+    await waitFor(() => expect(screen.getByText('Wilson Blade')).toBeTruthy());
+
+    const tensionSection = screen.getByTestId('stringing-tension-section');
+
+    expect(within(tensionSection).getByText('3. 텐션')).toBeTruthy();
+    expect(within(tensionSection).getByText('다시 예약')).toBeTruthy();
+    expect(
+      within(tensionSection).getByText('Luxilon Alu Power / Solinco Hyper-G'),
+    ).toBeTruthy();
   });
 
   test('텐션 선택은 균일과 하이브리드 모드를 전환한다', async () => {
@@ -305,6 +358,24 @@ describe('NewBookingScreen', () => {
     expect(screen.getByText('예약할 라켓을 선택하세요.')).toBeTruthy();
   });
 
+  test('mode=demo 파라미터로 들어오면 시타 예약 모드가 먼저 열린다', async () => {
+    mockSearchParams = { mode: 'demo' };
+    const NewBookingScreen = require('../app/(tabs)/new-booking').default;
+    const screen = render(<NewBookingScreen />);
+
+    await waitFor(() => expect(screen.getByText('Head Speed Demo')).toBeTruthy());
+
+    expect(screen.getByText('1. 시타 라켓 선택')).toBeTruthy();
+    expect(screen.getByLabelText('시타 라켓 Head Speed Demo')).toBeTruthy();
+    expect(screen.queryByText('2. 스트링 선택')).toBeNull();
+    await waitFor(() =>
+      expect(mockGetBookingSlotsForDate).toHaveBeenCalledWith(
+        expect.any(String),
+        'demo',
+      ),
+    );
+  });
+
   test('시타 예약 모드에는 스트링/텐션 입력이 없고 createDemoBooking을 호출한다', async () => {
     const NewBookingScreen = require('../app/(tabs)/new-booking').default;
     const screen = render(<NewBookingScreen />);
@@ -316,8 +387,19 @@ describe('NewBookingScreen', () => {
     });
 
     await waitFor(() => expect(screen.getByText('Head Speed Demo')).toBeTruthy());
+    expect(screen.getByText('시타 라켓 선택')).toBeTruthy();
+    expect(screen.getByText('시타 라켓 DB에서 선택')).toBeTruthy();
+    expect(screen.getByLabelText('시타 라켓 Head Speed Demo')).toBeTruthy();
+    expect(screen.getByText('300g · 그립 G2 · 헤드 100')).toBeTruthy();
+    expect(screen.getByText('대여 예정 시간')).toBeTruthy();
     expect(screen.queryByLabelText('메인 텐션')).toBeNull();
     expect(screen.queryByLabelText('크로스 텐션')).toBeNull();
+
+    fireEvent.press(screen.getByLabelText('반납 예정 시간'));
+
+    expect(screen.getByLabelText('반납 예정 시간 18:00')).toBeTruthy();
+    expect(screen.queryByLabelText('반납 예정 시간 08:30')).toBeNull();
+    expect(screen.queryByLabelText('반납 예정 시간 18:30')).toBeNull();
 
     await act(async () => {
       fireEvent.press(screen.getByText('예약 접수'));
@@ -333,6 +415,23 @@ describe('NewBookingScreen', () => {
         }),
       ),
     );
+  });
+
+  test('route mode=demo remains on demo rackets after tab blur reset', async () => {
+    mockSearchParams = { mode: 'demo' };
+    const NewBookingScreen = require('../app/(tabs)/new-booking').default;
+    const screen = render(<NewBookingScreen />);
+
+    await waitFor(() => expect(screen.getByText('Head Speed Demo')).toBeTruthy());
+    expect(screen.queryByText('Wilson Blade')).toBeNull();
+    expect(mockBlurHandler).toEqual(expect.any(Function));
+
+    await act(async () => {
+      mockBlurHandler?.();
+    });
+
+    expect(screen.getByText('Head Speed Demo')).toBeTruthy();
+    expect(screen.queryByText('Wilson Blade')).toBeNull();
   });
 
   test('배송 메뉴가 꺼져 있으면 퀵/택배 수령 옵션을 숨긴다', async () => {

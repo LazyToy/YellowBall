@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/Button';
+import { FeedbackDialog } from '@/components/FeedbackDialog';
 import { BackButton } from '@/components/MobileUI';
 import { RefreshableScrollView } from '@/components/PageRefresh';
 import { Typography } from '@/components/Typography';
@@ -22,6 +23,10 @@ export default function NotificationsScreen() {
   const profileId = profile?.id;
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [message, setMessage] = useState<string>();
+  const [successDialog, setSuccessDialog] = useState<{
+    title: string;
+    message?: string;
+  } | null>(null);
 
   const loadNotifications = useCallback(async () => {
     if (!profileId) {
@@ -35,8 +40,65 @@ export default function NotificationsScreen() {
     loadNotifications().catch(() => setMessage('알림을 불러오지 못했습니다.'));
   }, [loadNotifications]);
 
+  const handleMarkAllAsRead = async () => {
+    if (!profileId) {
+      return;
+    }
+
+    try {
+      await markAllAsRead(profileId);
+      await loadNotifications();
+      setSuccessDialog({
+        title: '모든 알림을 읽음 처리했습니다',
+        message: '확인을 누르면 알림함을 확인할 수 있습니다.',
+      });
+    } catch {
+      setMessage('모두 읽음 처리 실패');
+    }
+  };
+
+  const handleMarkAsRead = async (notification: AppNotification) => {
+    try {
+      await markAsRead(notification.id);
+      await loadNotifications();
+      setSuccessDialog({
+        title: '알림을 읽음 처리했습니다',
+        message: notification.title,
+      });
+    } catch {
+      setMessage('읽음 처리 실패');
+    }
+  };
+
+  const handleRegisterPushToken = async () => {
+    if (!profileId) {
+      return;
+    }
+
+    try {
+      const token = await registerPushToken(profileId);
+
+      setSuccessDialog({
+        title: token
+          ? '푸시 토큰이 등록되었습니다'
+          : '푸시 토큰 등록을 건너뛰었습니다',
+        message: token
+          ? '앱 알림을 받을 준비가 되었습니다.'
+          : '웹 또는 미지원 환경에서는 푸시 토큰 등록을 건너뜁니다.',
+      });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '토큰 등록 실패');
+    }
+  };
+
   return (
     <RefreshableScrollView contentContainerStyle={styles.container}>
+      <FeedbackDialog
+        visible={successDialog !== null}
+        title={successDialog?.title ?? ''}
+        message={successDialog?.message}
+        onConfirm={() => setSuccessDialog(null)}
+      />
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <BackButton onPress={() => router.back()} />
@@ -44,11 +106,7 @@ export default function NotificationsScreen() {
         </View>
         <Button
           accessibilityLabel="모두 읽음"
-        onPress={() =>
-            profileId
-              ? markAllAsRead(profileId).then(loadNotifications)
-              : undefined
-          }
+          onPress={handleMarkAllAsRead}
           size="sm"
           variant="outline"
         >
@@ -57,17 +115,7 @@ export default function NotificationsScreen() {
       </View>
       <Button
         accessibilityLabel="푸시 토큰 등록"
-        onPress={() =>
-          profileId
-            ? registerPushToken(profileId)
-                .then((token) =>
-                  setMessage(token ? '푸시 토큰이 등록되었습니다.' : '웹에서는 푸시 토큰을 건너뜁니다.'),
-                )
-                .catch((error) =>
-                  setMessage(error instanceof Error ? error.message : '토큰 등록 실패'),
-                )
-            : undefined
-        }
+        onPress={handleRegisterPushToken}
         variant="outline"
       >
         푸시 토큰 등록
@@ -83,11 +131,7 @@ export default function NotificationsScreen() {
           {!notification.read ? (
             <Button
               accessibilityLabel={`${notification.title} 읽음 처리`}
-              onPress={() =>
-                markAsRead(notification.id)
-                  .then(loadNotifications)
-                  .catch(() => setMessage('읽음 처리 실패'))
-              }
+              onPress={() => handleMarkAsRead(notification)}
               size="sm"
               variant="outline"
             >

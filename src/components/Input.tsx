@@ -3,14 +3,14 @@ import {
   Pressable,
   StyleProp,
   StyleSheet,
-  Text,
-  TextInput,
+  TextInput as NativeTextInput,
   TextInputProps,
   TextStyle,
   View,
   ViewStyle,
 } from 'react-native';
 
+import { Text, TextInput } from '@/components/AppText';
 import { sharedControlStyles, sharedTextStyles } from '../constants/componentStyles';
 import { lightColors, theme } from '../constants/theme';
 
@@ -23,7 +23,7 @@ export type InputProps = TextInputProps & {
   errorStyle?: StyleProp<TextStyle>;
 };
 
-export const Input = forwardRef<TextInput, InputProps>(function Input(
+export const Input = forwardRef<NativeTextInput, InputProps>(function Input(
   {
     label,
     error,

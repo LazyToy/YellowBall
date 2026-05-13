@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 export type ColorToken = {
   source: string;
   hsl: string;
@@ -110,12 +112,22 @@ export const theme = {
       ring: token('oklch(0.88 0.18 115)', '66 76% 57%', '#d5e43f'),
     },
   },
-  typography: {
-    fontFamily: {
-      body: 'Geist, System',
-      display: 'Manrope, Geist, System',
-      mono: 'Geist Mono, Menlo, monospace',
-    },
+typography: {
+  fontFamily: {
+    body: Platform.select({
+      web: 'Geist, system-ui, sans-serif',
+      default: 'System',
+    }) as string,
+    display: Platform.select({
+      web: 'Manrope, Geist, system-ui, sans-serif',
+      default: 'System',
+    }) as string,
+    mono: Platform.select({
+      web: 'Geist Mono, Menlo, monospace',
+      default: 'monospace',
+    }) as string,
+  },
+
     fontSize: {
       xs: 13,
       sm: 14,

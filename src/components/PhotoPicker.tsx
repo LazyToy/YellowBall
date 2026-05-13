@@ -5,10 +5,10 @@ import {
   Image,
   Platform,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
 
+import { Text } from '@/components/AppText';
 import { lightColors, theme } from '@/constants/theme';
 
 import { Button } from './Button';

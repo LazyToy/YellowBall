@@ -45,6 +45,7 @@ describe('Wave 13 RLS security hardening', () => {
     await expect(parse(readMigration('024_account_deletion_cleanup.sql'))).resolves.toBeTruthy();
     await expect(parse(readMigration('025_revoke_anon_execute_rpcs.sql'))).resolves.toBeTruthy();
     await expect(parse(readMigration('026_schedule_account_cleanup_cron.sql'))).resolves.toBeTruthy();
+    await expect(parse(readMigration('041_app_settings_write_policy_no_anon_helper.sql'))).resolves.toBeTruthy();
     await expect(parse(readFile('supabase/tests/rls_tests.sql'))).resolves.toBeTruthy();
   });
 
@@ -174,6 +175,20 @@ describe('Wave 13 RLS security hardening', () => {
     expect(sql).toContain('CREATE POLICY "audit_insert_admins"');
     expect(sql).toContain('CREATE POLICY "admin_perm_super"');
     expect(sql).toContain('CREATE POLICY "app_settings_super_write"');
+  });
+
+  test('app settings SELECT policy does not evaluate super-admin helper for anon reads', async () => {
+    const sql = readMigration('041_app_settings_write_policy_no_anon_helper.sql');
+
+    await expect(parse(sql)).resolves.toBeTruthy();
+    expect(sql).toContain('DROP POLICY IF EXISTS "app_settings_super_write"');
+    expect(sql).toContain('CREATE POLICY "app_settings_super_insert"');
+    expect(sql).toContain('CREATE POLICY "app_settings_super_update"');
+    expect(sql).toContain('CREATE POLICY "app_settings_super_delete"');
+    expect(sql).toContain('FOR INSERT');
+    expect(sql).toContain('FOR UPDATE');
+    expect(sql).toContain('FOR DELETE');
+    expect(sql).not.toContain('FOR ALL');
   });
 
   test('profiles sensitive columns cannot be changed through direct authenticated updates', () => {

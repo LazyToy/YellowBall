@@ -59,7 +59,9 @@ export function NotificationOptInDialog({
           </Typography>
 
           <View style={styles.actions}>
-            <Button onPress={onAllow}>알림 허용</Button>
+            <Button onPress={onAllow} testID="notification-opt-in-allow-button">
+              알림 허용
+            </Button>
             <Pressable
               accessibilityLabel="알림 나중에 설정"
               onPress={onDismiss}

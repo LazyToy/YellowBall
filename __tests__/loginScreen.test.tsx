@@ -1,5 +1,6 @@
 import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 
 const mockReplace = jest.fn();
 const mockSignIn = jest.fn();
@@ -28,6 +29,13 @@ jest.mock('../src/services/storageService', () => ({
     value ? `https://storage.example.com/app-assets/${value}` : null,
 }));
 
+const flattenStyle = (style: unknown) =>
+  StyleSheet.flatten(
+    typeof style === 'function'
+      ? style({ pressed: false, hovered: false, focused: false })
+      : style,
+  );
+
 describe('LoginScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -52,8 +60,92 @@ describe('LoginScreen', () => {
     expect(screen.getByLabelText('비밀번호')).toBeTruthy();
     expect(screen.getByLabelText('로그인')).toBeTruthy();
     expect(screen.getByLabelText('Google로 로그인')).toBeTruthy();
-    expect(screen.getByLabelText('카카오로 로그인')).toBeTruthy();
+    expect(screen.getByLabelText('카카오톡으로 로그인')).toBeTruthy();
+    expect(screen.getByText('Google로 계속하기')).toBeTruthy();
+    expect(screen.getByText('카카오톡으로 계속하기')).toBeTruthy();
+    expect(screen.getByTestId('google-social-login-button')).toBeTruthy();
+    expect(screen.getByTestId('kakao-social-login-button')).toBeTruthy();
     expect(screen.getByText('이메일로 회원가입')).toBeTruthy();
+  });
+
+  test('소셜 로그인 버튼은 Android에서 배경과 테두리를 잃지 않는 직접 표면을 가진다', () => {
+    const LoginScreen = require('../app/(auth)/login').default;
+    const screen = render(<LoginScreen />);
+
+    const googleStyle = flattenStyle(
+      screen.getByTestId('google-social-login-surface').props.style,
+    );
+    const kakaoStyle = flattenStyle(
+      screen.getByTestId('kakao-social-login-surface').props.style,
+    );
+
+    expect(googleStyle).toEqual(
+      expect.objectContaining({
+        backgroundColor: '#FFFFFF',
+        borderColor: '#DADCE0',
+        height: 48,
+        minHeight: 48,
+        overflow: 'hidden',
+        zIndex: 1,
+      }),
+    );
+    expect(kakaoStyle).toEqual(
+      expect.objectContaining({
+        backgroundColor: '#FEE500',
+        borderColor: '#FEE500',
+        height: 48,
+        minHeight: 48,
+        overflow: 'hidden',
+        zIndex: 1,
+      }),
+    );
+  });
+
+  test('social login button content fills the Android surface and keeps the label visible', () => {
+    const LoginScreen = require('../app/(auth)/login').default;
+    const screen = render(<LoginScreen />);
+
+    const googleContentStyle = flattenStyle(
+      screen.getByTestId('google-social-login-button').props.style,
+    );
+    const kakaoContentStyle = flattenStyle(
+      screen.getByTestId('kakao-social-login-button').props.style,
+    );
+    const googleLabelStyle = StyleSheet.flatten(
+      screen.getByTestId('google-social-login-label').props.style,
+    );
+    const kakaoLabelStyle = StyleSheet.flatten(
+      screen.getByTestId('kakao-social-login-label').props.style,
+    );
+
+    expect(googleContentStyle).toEqual(
+      expect.objectContaining({
+        flex: 1,
+        justifyContent: 'center',
+        minHeight: 48,
+        position: 'relative',
+      }),
+    );
+    expect(kakaoContentStyle).toEqual(
+      expect.objectContaining({
+        flex: 1,
+        justifyContent: 'center',
+        minHeight: 48,
+        position: 'relative',
+      }),
+    );
+    expect(googleLabelStyle).toEqual(
+      expect.objectContaining({
+        maxWidth: '76%',
+        textAlign: 'center',
+      }),
+    );
+    expect(kakaoLabelStyle).toEqual(
+      expect.objectContaining({
+        maxWidth: '76%',
+        textAlign: 'center',
+      }),
+    );
   });
 
   test('로그인 실패 시 오류 메시지를 표시한다', async () => {

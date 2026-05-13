@@ -68,6 +68,64 @@ describe('bookingNotificationService', () => {
     expect(insert).not.toHaveBeenCalled();
   });
 
+  test('operation policy can disable booking confirmation notifications', async () => {
+    const insert = jest.fn();
+    const from = jest
+      .fn()
+      .mockReturnValueOnce(prefQuery({ booking_notifications: true }))
+      .mockReturnValueOnce({ insert });
+    const service = createBookingNotificationService(
+      { from } as never,
+      () => new Date(2026, 4, 4, 12, 0),
+      {
+        getSettings: jest.fn().mockResolvedValue({
+          notifyBookingConfirmation: false,
+          notifyPickupReady: true,
+        }),
+      } as never,
+    );
+
+    await expect(
+      service.createStatusNotification({
+        userId: 'user-1',
+        bookingId: 'booking-1',
+        bookingType: 'service',
+        status: 'approved',
+      }),
+    ).resolves.toBeNull();
+
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  test('operation policy can disable pickup ready notifications', async () => {
+    const insert = jest.fn();
+    const from = jest
+      .fn()
+      .mockReturnValueOnce(prefQuery({ booking_notifications: true }))
+      .mockReturnValueOnce({ insert });
+    const service = createBookingNotificationService(
+      { from } as never,
+      () => new Date(2026, 4, 4, 12, 0),
+      {
+        getSettings: jest.fn().mockResolvedValue({
+          notifyBookingConfirmation: true,
+          notifyPickupReady: false,
+        }),
+      } as never,
+    );
+
+    await expect(
+      service.createStatusNotification({
+        userId: 'user-1',
+        bookingId: 'booking-1',
+        bookingType: 'service',
+        status: 'pickup_ready',
+      }),
+    ).resolves.toBeNull();
+
+    expect(insert).not.toHaveBeenCalled();
+  });
+
   test('quiet hours 안에서는 silent 데이터로 알림을 생성한다', async () => {
     const single = jest
       .fn()

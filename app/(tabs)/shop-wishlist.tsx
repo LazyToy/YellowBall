@@ -1,14 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   GestureResponderEvent,
   Pressable,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 
+import { Text } from '@/components/AppText';
 import { AppIcon } from '@/components/AppIcon';
+import { FeedbackDialog } from '@/components/FeedbackDialog';
 import {
   AppScrollView,
   PageHeader,
@@ -29,14 +30,28 @@ const formatPrice = (value: number) => value.toLocaleString('ko-KR');
 export default function ShopWishlistScreen() {
   const router = useRouter();
   const wishlistItems = useShopWishlist();
+  const [successDialog, setSuccessDialog] = useState<{
+    title: string;
+    message?: string;
+  } | null>(null);
 
-  const handleRemove = (event: GestureResponderEvent, id: string) => {
-    event.stopPropagation();
+  const handleRemove = (event: GestureResponderEvent | undefined, id: string) => {
+    event?.stopPropagation();
     removeShopWishlistItem(id);
+    setSuccessDialog({
+      title: '찜 목록에서 해제되었습니다',
+      message: '확인을 누르면 찜 목록을 확인할 수 있습니다.',
+    });
   };
 
   return (
     <AppScrollView contentContainerStyle={styles.content}>
+      <FeedbackDialog
+        visible={successDialog !== null}
+        title={successDialog?.title ?? ''}
+        message={successDialog?.message}
+        onConfirm={() => setSuccessDialog(null)}
+      />
       <PageHeader
         back
         onBack={() => goBackOrReplace(router, '/shop')}

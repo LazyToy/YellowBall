@@ -112,10 +112,12 @@ export default function TabsLayout() {
         onDismiss={handleDismiss}
       />
       <Tabs
+        backBehavior="history"
         screenOptions={{
           headerShown: false,
           tabBarActiveTintColor: lightColors.primary.hex,
           tabBarInactiveTintColor: lightColors.mutedForeground.hex,
+          tabBarAllowFontScaling: false,
           tabBarLabelStyle: styles.tabLabel,
           tabBarStyle: styles.tabBar,
         }}

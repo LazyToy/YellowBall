@@ -8,6 +8,7 @@ import {
   type SocialAuthProvider,
   type SignInResult,
 } from '../services/authService';
+import { getOperationPolicySettings } from '../services/operationPolicyService';
 import { getProfile } from '../services/profileService';
 import { resetAllZustandStores } from '../stores/resetStores';
 import type { Profile } from '../types/database';
@@ -64,8 +65,11 @@ const toKoreanAuthError = (error: unknown) => {
   return '인증 상태를 불러오지 못했습니다.';
 };
 
-const getBlockedAccountMessage = (profile: Profile) => {
-  if (profile.status === 'suspended') {
+const getBlockedAccountMessage = (
+  profile: Profile,
+  suspendedLoginBlocked: boolean,
+) => {
+  if (profile.status === 'suspended' && suspendedLoginBlocked) {
     return '계정이 제재되었습니다.';
   }
 
@@ -106,7 +110,11 @@ export const syncAuthSession = async (session: Session | null) => {
 
   try {
     const profile = await getProfile(session.user.id);
-    const blockedMessage = getBlockedAccountMessage(profile);
+    const policy = await getOperationPolicySettings();
+    const blockedMessage = getBlockedAccountMessage(
+      profile,
+      policy.suspendedLoginBlocked,
+    );
 
     if (blockedMessage) {
       try {

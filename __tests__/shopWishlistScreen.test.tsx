@@ -59,4 +59,28 @@ describe('ShopWishlistScreen', () => {
 
     expect(screen.getByText('아직 찜한 상품이 없습니다.')).toBeTruthy();
   });
+
+  test('찜 목록에서 상품을 해제하면 알림창을 표시한다', () => {
+    const store = require('../src/stores/shopWishlistStore');
+    store.toggleShopWishlistItem({
+      id: 'racket-1',
+      name: 'Wilson Pro Staff',
+      category: '라켓',
+      image_path: null,
+      image_url: null,
+      price: 389000,
+      sale: 329000,
+      rating: 4.9,
+      reviews: 128,
+      tag: 'BEST',
+      tone: 'primary',
+    });
+
+    const ShopWishlistScreen = require('../app/(tabs)/shop-wishlist').default;
+    const screen = render(<ShopWishlistScreen />);
+
+    fireEvent.press(screen.getByLabelText('Wilson Pro Staff 찜 해제'));
+
+    expect(screen.getByText('찜 목록에서 해제되었습니다')).toBeTruthy();
+  });
 });

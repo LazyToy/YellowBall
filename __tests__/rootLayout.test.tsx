@@ -14,8 +14,11 @@ const mockUnsubscribe = jest.fn();
 
 jest.mock('expo-router', () => {
   const React = require('react');
+  const { View } = require('react-native');
 
-  const Stack = ({ children }: { children: React.ReactNode }) => <>{children}</>;
+  const Stack = ({ children }: { children: React.ReactNode }) => (
+    <View testID="root-stack">{children}</View>
+  );
   Stack.Screen = () => null;
 
   return {
@@ -91,6 +94,29 @@ describe('RootLayout 인증 분기', () => {
     expect(source).toContain('SafeAreaProvider');
     expect(source).toContain('SafeAreaView');
     expect(source).toContain("edges={['top', 'bottom']}");
+  });
+
+  test('Android status bar는 앱 배경에 묻히지 않도록 명시 설정한다', () => {
+    const source = readFileSync(join(process.cwd(), 'app/_layout.tsx'), 'utf8');
+
+    expect(source).toContain('style="dark"');
+    expect(source).toContain('backgroundColor={lightColors.background.hex}');
+    expect(source).toContain('translucent={false}');
+  });
+
+  test('인증 상태를 확인하는 중에도 루트 navigator를 먼저 마운트한다', () => {
+    mockUseSegments.mockReturnValue([]);
+    mockUseAuth.mockReturnValue({
+      session: null,
+      isLoading: true,
+    });
+
+    const RootLayout = require('../app/_layout').default;
+    const screen = render(<RootLayout />);
+
+    expect(screen.getByTestId('root-stack')).toBeTruthy();
+    expect(screen.getByTestId('loading-spinner-fullscreen')).toBeTruthy();
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 
   test('만료된 세션은 앱 시작 시 refreshSession으로 갱신한다', async () => {

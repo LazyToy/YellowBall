@@ -4,11 +4,13 @@ import { StyleSheet, View } from 'react-native';
 
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
+import { ConfirmDialog, FeedbackDialog } from '@/components/FeedbackDialog';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { BackButton } from '@/components/MobileUI';
 import { RefreshableScrollView } from '@/components/PageRefresh';
 import { Typography } from '@/components/Typography';
 import { lightColors, theme } from '@/constants/theme';
+import { useOperationPolicySettings } from '@/hooks/useOperationPolicySettings';
 import { cancelBooking, getBookingDetail } from '@/services/bookingService';
 import type { ServiceBooking } from '@/types/database';
 import {
@@ -40,6 +42,12 @@ export default function BookingDetailScreen() {
   const [message, setMessage] = useState<string>();
   const [isLoading, setIsLoading] = useState(true);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [cancelDialogVisible, setCancelDialogVisible] = useState(false);
+  const [successDialog, setSuccessDialog] = useState<{
+    title: string;
+    message?: string;
+  } | null>(null);
+  const operationPolicy = useOperationPolicySettings();
 
   const loadBooking = useCallback(async () => {
     if (!id) {
@@ -68,14 +76,18 @@ export default function BookingDetailScreen() {
     }
 
     try {
+      setCancelDialogVisible(false);
       setIsCancelling(true);
       const result = await cancelBooking(booking.id, booking.user_id);
       await loadBooking();
-      setMessage(
-        result.requiresAdminApproval
-          ? '취소 요청을 등록했습니다. 관리자가 확인한 뒤 처리됩니다.'
-          : '예약을 취소했습니다.',
-      );
+      setSuccessDialog({
+        title: result.requiresAdminApproval
+          ? '취소 요청이 등록되었습니다'
+          : '예약을 취소했습니다',
+        message: result.requiresAdminApproval
+          ? '관리자가 확인한 뒤 처리됩니다.'
+          : '확인을 누르면 예약 상세를 확인할 수 있습니다.',
+      });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '예약 취소에 실패했습니다.');
     } finally {
@@ -101,13 +113,40 @@ export default function BookingDetailScreen() {
     );
   }
 
-  const cancellationRemaining = getRemainingTime(booking);
+  const freeCancellationHours = operationPolicy.stringingRefundHours;
+  const cancellationRemaining = getRemainingTime(
+    booking,
+    new Date(),
+    freeCancellationHours,
+  );
   const canRequestCancel = canRequestCancellation(booking);
-  const freeCancellation = canCancelFreely(booking);
+  const freeCancellation = canCancelFreely(
+    booking,
+    new Date(),
+    freeCancellationHours,
+  );
   const addressLabel = getBookingAddressLabel(booking);
 
   return (
     <RefreshableScrollView contentContainerStyle={styles.container}>
+      <FeedbackDialog
+        visible={successDialog !== null}
+        title={successDialog?.title ?? ''}
+        message={successDialog?.message}
+        onConfirm={() => setSuccessDialog(null)}
+      />
+      <ConfirmDialog
+        visible={cancelDialogVisible}
+        title={freeCancellation ? '예약을 취소할까요?' : '취소 요청을 등록할까요?'}
+        message={
+          freeCancellation
+            ? '취소 후에는 되돌릴 수 없습니다.'
+            : '관리자 확인 후 취소 처리됩니다.'
+        }
+        confirmLabel={freeCancellation ? '예약 취소' : '취소 요청'}
+        onCancel={() => setCancelDialogVisible(false)}
+        onConfirm={handleCancel}
+      />
       <View style={styles.header}>
         <View style={styles.flex}>
           <View style={styles.titleRow}>
@@ -159,12 +198,12 @@ export default function BookingDetailScreen() {
           {canRequestCancel
             ? freeCancellation
               ? `무료 취소 가능: ${cancellationRemaining.hours}시간 ${cancellationRemaining.minutes}분 남음`
-              : '24시간 이내 예약은 관리자 확인 후 취소됩니다.'
+              : `${freeCancellationHours}시간 이내 예약은 관리자 확인 후 취소됩니다.`
             : '현재 상태에서는 취소할 수 없습니다.'}
         </Typography>
         <Button
           disabled={!canRequestCancel || isCancelling}
-          onPress={handleCancel}
+          onPress={() => setCancelDialogVisible(true)}
           size="sm"
           variant={freeCancellation ? 'outline' : 'secondary'}
         >

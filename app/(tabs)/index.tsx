@@ -1,22 +1,22 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
   Image,
+  type LayoutChangeEvent,
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
   useWindowDimensions,
 } from 'react-native';
 
+import { Text } from '@/components/AppText';
 import {
   AppScrollView,
   Card,
-  IconAction,
+  GlyphBubble,
   Pill,
   ProductThumb,
-  RowButton,
   SectionHeader,
   TopBar,
 } from '@/components/MobileUI';
@@ -31,20 +31,16 @@ import {
 import {
   getAppContentBlocks,
   type ContentTone,
-  type HomeBanner,
-  type HomeShopCategory,
   type StoreHoursContent,
 } from '@/services/appContentService';
 import { getMyBookings } from '@/services/bookingService';
 import { getRackets } from '@/services/racketService';
 import {
-  getAppAssetUrl,
   getRacketPhotoUrl,
   getStringPhotoUrl,
 } from '@/services/storageService';
 import { getActiveStrings } from '@/services/stringCatalogService';
 import { getSetupsByRacket } from '@/services/stringSetupService';
-import { getStoreInfo } from '@/services/storeSettingsService';
 import type {
   ServiceBooking,
   ServiceBookingStatus,
@@ -55,13 +51,26 @@ import {
   buildHomeFeaturedString,
   type HomeFeaturedStringItem,
 } from '@/utils/homeFeaturedStrings';
-import { normalizeHomeShopCategories } from '@/utils/homeShopCategories';
+import {
+  getHomeBannerMeasuredContentLayout,
+  getHomeQuickActionLayout,
+  getSafeHomeContentWidth,
+} from '@/utils/homeLayout';
 
 type HomeRebookContent = {
   meta: string;
   title: string;
   subtitle: string;
 };
+
+const ADD_RACKET_HORIZONTAL_DASHES = Array.from(
+  { length: 7 },
+  (_, index) => index,
+);
+const ADD_RACKET_VERTICAL_DASHES = Array.from(
+  { length: 10 },
+  (_, index) => index,
+);
 
 type HomeActiveBooking = {
   statusLabel: string;
@@ -110,7 +119,7 @@ const quickServices = [
     label: '스트링 작업',
     sub: '예약 · 결제',
     tone: 'primary' as const,
-    route: '/new-booking',
+    route: '/new-booking?mode=stringing',
   },
   {
     menuId: 'demo-booking' as const,
@@ -118,7 +127,7 @@ const quickServices = [
     label: '라켓 시타',
     sub: '데모 대여',
     tone: 'accent' as const,
-    route: '/new-booking',
+    route: '/new-booking?mode=demo',
   },
   {
     menuId: 'shop' as const,
@@ -138,38 +147,15 @@ const quickServices = [
   },
 ];
 
-const defaultHomeBanners: HomeBanner[] = [
-  {
-    buttonLabel: '예약하기',
-    id: 'home-stringing',
-    image_path: 'seed/home-banner-stringing.png',
-    meta: 'STRINGING',
-    route: '/new-booking',
-    subtitle: '새 스트링 작업을 빠르게 예약하세요.',
-    title: '오늘 컨디션에 맞춘 스트링',
-  },
-  {
-    buttonLabel: '둘러보기',
-    id: 'home-demo-rackets',
-    image_path: 'seed/home-banner-demo-rackets.png',
-    meta: 'DEMO RACKETS',
-    route: '/shop',
-    subtitle: '인기 라켓을 비교하고 다음 장비를 찾아보세요.',
-    title: '새 라켓을 찾는 시간',
-  },
-  {
-    buttonLabel: '쇼핑하기',
-    id: 'home-accessories',
-    image_path: 'seed/home-banner-accessories.png',
-    meta: 'SHOP',
-    route: '/shop',
-    subtitle: '스트링, 그립, 액세서리를 한 번에 확인하세요.',
-    title: '코트 준비를 더 가볍게',
-  },
-];
-
 
 const progressSteps = ['접수', '승인', '작업중', '완료'];
+const screenHorizontalPadding = theme.spacing[5];
+const quickActionColumns = 4;
+const quickActionGap = theme.spacing[2];
+const minQuickActionWidth = 72;
+const featuredStringColumns = 2;
+const featuredStringGap = theme.spacing[2];
+const featuredStringCardHeight = 312;
 
 const activeBookingStatuses: ServiceBookingStatus[] = [
   'requested',
@@ -263,6 +249,17 @@ const toHomeRacket = (
   tone: racket.is_primary ? 'primary' : 'accent',
 });
 
+const chunkItems = <T,>(items: T[], size: number): T[][] => {
+  const chunkSize = Math.max(1, Math.floor(size));
+  const chunks: T[][] = [];
+
+  for (let index = 0; index < items.length; index += chunkSize) {
+    chunks.push(items.slice(index, index + chunkSize));
+  }
+
+  return chunks;
+};
+
 export default function HomeScreen() {
   const router = useRouter();
   const menuSettings = useAppMenuSettings();
@@ -278,20 +275,18 @@ export default function HomeScreen() {
   const [featuredStrings, setFeaturedStrings] = useState<
     HomeFeaturedStringItem[]
   >([]);
-  const [homeBanners, setHomeBanners] =
-    useState<HomeBanner[]>(defaultHomeBanners);
-  const [categories, setCategories] = useState<HomeShopCategory[]>([]);
   const [storeHours, setStoreHours] = useState<StoreHoursContent | null>(null);
-  // DB에서 로드한 매장명 상태
-  const [storeName, setStoreName] = useState<string | null>(null);
-
-  const categoryCardWidth = useMemo(() => {
-    const sectionHorizontalPadding = theme.spacing[5] * 2;
-    const cardGap = theme.spacing[2];
-    const gridWidth = Math.max(0, windowWidth - sectionHorizontalPadding);
-
-    return Math.max(0, Math.floor((gridWidth - cardGap) / 2));
-  }, [windowWidth]);
+  const [measuredContentWidth, setMeasuredContentWidth] = useState<
+    number | null
+  >(null);
+  const fallbackContentWidth = useMemo(
+    () => Math.max(0, Math.floor(windowWidth - screenHorizontalPadding * 2)),
+    [windowWidth],
+  );
+  const visibleContentWidth = useMemo(
+    () => getSafeHomeContentWidth(measuredContentWidth, fallbackContentWidth),
+    [fallbackContentWidth, measuredContentWidth],
+  );
   const bookingMenusVisible = hasAnyBookingMenu(menuSettings);
   const visibleQuickServices = useMemo(
     () =>
@@ -304,40 +299,73 @@ export default function HomeScreen() {
       }),
     [bookingMenusVisible, menuSettings],
   );
-  const visibleHomeBanners = useMemo(
+  const quickActionLayout = useMemo(
     () =>
-      homeBanners.filter((banner) => {
-        if (banner.route === '/shop') {
-          return menuSettings.shop;
-        }
-
-        if (banner.route === '/new-booking') {
-          return bookingMenusVisible;
-        }
-
-        return true;
-      }),
-    [bookingMenusVisible, homeBanners, menuSettings.shop],
+      getHomeQuickActionLayout(
+        visibleContentWidth,
+        quickActionGap,
+        visibleQuickServices.length,
+        quickActionColumns,
+        minQuickActionWidth,
+      ),
+    [visibleContentWidth, visibleQuickServices.length],
   );
+  const quickActionColumnCount = quickActionLayout.columns;
+  const quickActionWidth = quickActionLayout.itemWidth;
+  const quickActionIconSize = useMemo(() => {
+    if (quickActionWidth <= 0) {
+      return 52;
+    }
+
+    return Math.max(42, Math.min(52, Math.floor(quickActionWidth * 0.68)));
+  }, [quickActionWidth]);
+  const quickActionRows = useMemo(
+    () => chunkItems(visibleQuickServices, quickActionColumnCount),
+    [quickActionColumnCount, visibleQuickServices],
+  );
+  const featuredStringWidth = getHomeBannerMeasuredContentLayout(
+    visibleContentWidth,
+    featuredStringGap,
+    featuredStringColumns,
+  ).itemWidth;
+  const featuredStringCardSizing = useMemo(
+    () =>
+      featuredStringWidth > 0
+        ? {
+            flexBasis: featuredStringWidth,
+            flexShrink: 0,
+            maxWidth: featuredStringWidth,
+            minWidth: featuredStringWidth,
+            width: featuredStringWidth,
+          }
+        : null,
+    [featuredStringWidth],
+  );
+
+  const handleHomeLayoutProbe = useCallback((event: LayoutChangeEvent) => {
+    const nextWidth = Math.floor(event.nativeEvent.layout.width);
+
+    if (!Number.isFinite(nextWidth) || nextWidth <= 0) {
+      return;
+    }
+
+    setMeasuredContentWidth((currentWidth) =>
+      currentWidth === nextWidth ? currentWidth : nextWidth,
+    );
+  }, []);
 
   useEffect(() => {
     let mounted = true;
 
     Promise.all([
-      getAppContentBlocks([
-        'home_banners',
-        'home_categories',
-        'home_store_hours',
-      ]),
+      getAppContentBlocks(['home_store_hours']),
       profileId
         ? getMyBookings(profileId)
         : Promise.resolve([] as ServiceBooking[]),
       profileId ? getRackets(profileId) : Promise.resolve([] as UserRacket[]),
       getActiveStrings(),
-      // 매장 정보 병렬 로드
-      getStoreInfo(),
     ])
-      .then(async ([blocks, bookings, userRackets, strings, storeInfo]) => {
+      .then(async ([blocks, bookings, userRackets, strings]) => {
         if (!mounted) {
           return;
         }
@@ -352,19 +380,20 @@ export default function HomeScreen() {
 
         setRebook(toHomeRebook(lastCompleted));
         setActiveBooking(active ? toHomeActiveBooking(active) : null);
-        // 매장명 업데이트
-        setStoreName(storeInfo.storeName || null);
         // 각 라켓의 스트링 셋업 병렬 조회
         const racketSetups = await Promise.all(
           userRackets.map(async (racket) => {
-            if (!profileId) return { racket, setup: null, stringName: '스트링 미등록' };
+            if (!profileId)
+              return { racket, setup: null, stringName: '스트링 미등록' };
             try {
               const setups = await getSetupsByRacket(profileId, racket.id);
               const latest = setups[0] ?? null;
               let stringName = '스트링 미등록';
               if (latest) {
                 // string_catalog 정보는 이미 로드된 strings에서 찾기 (API 호출 최소화)
-                const found = strings.find((s) => s.id === latest.main_string_id);
+                const found = strings.find(
+                  (s) => s.id === latest.main_string_id,
+                );
                 if (found) {
                   stringName = `${found.brand} ${found.name}`;
                 } else {
@@ -384,10 +413,6 @@ export default function HomeScreen() {
           ),
         );
         setFeaturedStrings(strings.slice(0, 3).map(buildHomeFeaturedString));
-        setHomeBanners(
-          blocks.home_banners?.length ? blocks.home_banners : defaultHomeBanners,
-        );
-        setCategories(normalizeHomeShopCategories(blocks.home_categories));
         setStoreHours(blocks.home_store_hours ?? null);
       })
       .catch(() => {
@@ -399,8 +424,6 @@ export default function HomeScreen() {
         setActiveBooking(null);
         setRackets([]);
         setFeaturedStrings([]);
-        setHomeBanners(defaultHomeBanners);
-        setCategories([]);
         setStoreHours(null);
       });
 
@@ -411,11 +434,15 @@ export default function HomeScreen() {
 
   return (
     <AppScrollView>
-      <TopBar
-        nickname={nickname}
-        storeName={storeName}
-        onNotificationsPress={() => router.push('/notifications')}
-      />
+      <View pointerEvents="none" style={styles.homeLayoutProbeWrap}>
+        <View
+          onLayout={handleHomeLayoutProbe}
+          style={styles.homeLayoutProbe}
+          testID="home-layout-probe"
+        />
+      </View>
+
+      <TopBar onNotificationsPress={() => router.push('/notifications')} />
 
       <View style={styles.heroSection}>
         <Text style={styles.greeting}>안녕하세요, {nickname}님</Text>
@@ -447,224 +474,316 @@ export default function HomeScreen() {
         ) : null}
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={styles.bannerList}>
-          {visibleHomeBanners.map((banner) => {
-            const imageUrl = getAppAssetUrl(
-              banner.image_path ?? banner.image_url,
-            );
-            const imageSource = imageUrl ? { uri: imageUrl } : null;
-
-            return (
-              <Pressable
-                accessibilityLabel={banner.title}
-                accessibilityRole="button"
-                key={banner.id}
-                onPress={() => {
-                  if (banner.route) {
-                    router.push(banner.route);
-                  }
-                }}
-                style={({ pressed }) => [
-                  styles.homeBanner,
-                  pressed && styles.pressed,
-                ]}
-              >
-                {imageSource ? (
-                  <Image
-                    accessibilityIgnoresInvertColors
-                    resizeMode="cover"
-                    source={imageSource}
-                    style={styles.homeBannerImage}
-                  />
-                ) : null}
-                <View style={styles.homeBannerOverlay} />
-                <View style={styles.homeBannerText}>
-                  <Text style={styles.homeBannerMeta}>{banner.meta}</Text>
-                  <Text style={styles.homeBannerTitle}>{banner.title}</Text>
-                  <Text style={styles.homeBannerSub}>{banner.subtitle}</Text>
-                </View>
-                <View style={styles.homeBannerButton}>
-                  <Text style={styles.homeBannerButtonText}>
-                    {banner.buttonLabel}
-                  </Text>
-                </View>
-              </Pressable>
-            );
-          })}
-        </View>
-      </ScrollView>
-
       <View style={styles.quickGrid}>
-        {visibleQuickServices.map((service) => (
-          <IconAction
-            glyph={service.glyph}
-            key={service.label}
-            label={service.label}
-            onPress={() => router.push(service.route)}
-            sub={service.sub}
-            tone={service.tone}
-          />
-        ))}
+        {quickActionRows.map((row, rowIndex) => {
+          return (
+            <View
+              key={`quick-row-${rowIndex}`}
+              style={styles.quickRow}
+              testID={`home-quick-row-${rowIndex}`}
+            >
+              {row.map((service) => (
+                <View
+                  key={service.label}
+                  style={[
+                    styles.quickActionCell,
+                    quickActionWidth > 0
+                      ? {
+                          flexBasis: quickActionWidth,
+                          maxWidth: quickActionWidth,
+                          width: quickActionWidth,
+                        }
+                      : null,
+                  ]}
+                  testID={`home-quick-cell-${service.menuId}`}
+                >
+                  <Pressable
+                    accessibilityLabel={service.label}
+                    accessibilityRole="button"
+                    testID={`home-quick-action-${service.menuId}`}
+                    onPress={() => router.push(service.route)}
+                    style={({ pressed }) => [
+                      styles.quickAction,
+                      quickActionWidth > 0
+                        ? {
+                            width: quickActionWidth,
+                          }
+                        : styles.quickActionFallback,
+                      pressed ? styles.pressed : null,
+                    ]}
+                  >
+                    <View
+                      style={styles.quickActionIconSlot}
+                      testID={`home-quick-icon-slot-${service.menuId}`}
+                    >
+                      <GlyphBubble
+                        glyph={service.glyph}
+                        tone={service.tone}
+                        size={quickActionIconSize}
+                      />
+                    </View>
+                    <Text
+                      numberOfLines={1}
+                      style={styles.quickActionLabel}
+                      testID={`home-quick-label-${service.menuId}`}
+                    >
+                      {service.label}
+                    </Text>
+                    <Text numberOfLines={1} style={styles.quickActionSub}>
+                      {service.sub}
+                    </Text>
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          );
+        })}
       </View>
 
       {bookingMenusVisible ? (
-      <View style={styles.section}>
-        <SectionHeader
-          title="진행 중인 예약"
-          action={
-            <Pressable
-              accessibilityLabel="예약 전체 보기"
-              accessibilityRole="button"
-              onPress={() => router.push('/booking')}
-            >
-              <Text style={styles.linkText}>전체 보기 {'>'}</Text>
-            </Pressable>
-          }
-        />
-        {activeBooking ? (
-          <Card>
-            <View style={styles.bookingTop}>
-              <View style={styles.flex}>
-                <View style={styles.badgeRow}>
-                  <Pill tone="accent">{activeBooking.statusLabel}</Pill>
-                  <Text style={styles.metaText}>
-                    예약 {activeBooking.bookingNumber}
-                  </Text>
-                </View>
-                <Text style={styles.bookingTitle}>
-                  {activeBooking.racketName}
-                </Text>
-                <Text style={styles.mutedText}>
-                  {activeBooking.stringSummary}
-                </Text>
-              </View>
-              <View style={styles.pickupBox}>
-                <Text style={styles.metaText}>{activeBooking.pickupLabel}</Text>
-                <Text style={styles.pickupTime}>
-                  {activeBooking.pickupTime}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.progressWrap}>
-              {progressSteps.map((step, index) => {
-                const active = index <= activeBooking.activeStepIndex;
-
-                return (
-                  <View key={step} style={styles.progressItem}>
-                    <View
-                      style={[
-                        styles.progressBar,
-                        active && styles.progressBarActive,
-                      ]}
-                    />
-                    <Text
-                      style={[
-                        styles.progressLabel,
-                        active && styles.progressLabelActive,
-                      ]}
-                    >
-                      {step}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
-            <View style={styles.bookingActions}>
+        <View style={styles.section}>
+          <SectionHeader
+            title="진행 중인 예약"
+            action={
               <Pressable
-                accessibilityLabel="예약 상세 보기"
+                accessibilityLabel="예약 전체 보기"
                 accessibilityRole="button"
                 onPress={() => router.push('/booking')}
-                style={styles.secondaryButton}
               >
-                <Text style={styles.secondaryButtonText}>상세 보기</Text>
+                <Text style={styles.linkText}>전체 보기 {'>'}</Text>
               </Pressable>
-              <Pressable
-                accessibilityLabel="매장 위치 안내"
-                accessibilityRole="button"
-                style={styles.primaryButton}
-              >
-                <Text style={styles.primaryButtonText}>매장 위치 안내</Text>
-              </Pressable>
-            </View>
-          </Card>
-        ) : (
-          <Card>
-            <Text style={styles.mutedText}>진행 중인 예약이 없습니다.</Text>
-          </Card>
-        )}
-      </View>
+            }
+          />
+          {activeBooking ? (
+            <Card>
+              <View style={styles.bookingTop}>
+                <View style={styles.flex}>
+                  <View style={styles.badgeRow}>
+                    <Pill tone="accent">{activeBooking.statusLabel}</Pill>
+                    <Text style={styles.metaText}>
+                      예약 {activeBooking.bookingNumber}
+                    </Text>
+                  </View>
+                  <Text style={styles.bookingTitle}>
+                    {activeBooking.racketName}
+                  </Text>
+                  <Text style={styles.mutedText}>
+                    {activeBooking.stringSummary}
+                  </Text>
+                </View>
+                <View style={styles.pickupBox}>
+                  <Text style={styles.metaText}>
+                    {activeBooking.pickupLabel}
+                  </Text>
+                  <Text style={styles.pickupTime}>
+                    {activeBooking.pickupTime}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.progressWrap}>
+                {progressSteps.map((step, index) => {
+                  const active = index <= activeBooking.activeStepIndex;
+
+                  return (
+                    <View key={step} style={styles.progressItem}>
+                      <View
+                        style={[
+                          styles.progressBar,
+                          active && styles.progressBarActive,
+                        ]}
+                      />
+                      <Text
+                        style={[
+                          styles.progressLabel,
+                          active && styles.progressLabelActive,
+                        ]}
+                      >
+                        {step}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+              <View style={styles.bookingActions}>
+                <Pressable
+                  accessibilityLabel="예약 상세 보기"
+                  accessibilityRole="button"
+                  onPress={() => router.push('/booking')}
+                  style={styles.secondaryButton}
+                >
+                  <Text style={styles.secondaryButtonText}>상세 보기</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityLabel="매장 위치 안내"
+                  accessibilityRole="button"
+                  style={styles.primaryButton}
+                >
+                  <Text style={styles.primaryButtonText}>매장 위치 안내</Text>
+                </Pressable>
+              </View>
+            </Card>
+          ) : (
+            <Card>
+              <Text style={styles.mutedText}>진행 중인 예약이 없습니다.</Text>
+            </Card>
+          )}
+        </View>
       ) : null}
 
       {menuSettings['racket-library'] ? (
-      <View style={styles.racketSection}>
-        <SectionHeader
-          title="내 라켓"
-          caption="저장된 조합으로 빠르게 예약"
-          action={
+        <View style={styles.racketSection} testID="home-racket-section">
+          <SectionHeader
+            title="내 라켓"
+            caption="저장된 조합으로 빠르게 예약"
+            action={
+              <Pressable
+                accessibilityLabel="라켓 관리"
+                accessibilityRole="button"
+                onPress={() => router.push('/rackets')}
+                testID="home-racket-manage-link"
+              >
+                <Text style={styles.linkText}>관리 {'>'}</Text>
+              </Pressable>
+            }
+          />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.racketList}
+          >
+            {rackets.map((racket) => (
+              <View
+                key={racket.id}
+                style={styles.racketCard}
+                testID={`home-racket-card-${racket.id}`}
+              >
+                <Pressable
+                  accessibilityLabel={`${racket.brand} ${racket.model} 상세 보기`}
+                  accessibilityRole="button"
+                  onPress={() =>
+                    router.push({
+                      pathname: '/racket-detail',
+                      params: { from: '/', id: racket.id },
+                    })
+                  }
+                  style={({ pressed }) => [
+                    styles.racketCardPressable,
+                    pressed && styles.pressed,
+                  ]}
+                  testID={`home-racket-card-pressable-${racket.id}`}
+                >
+                  <ProductThumb
+                    imageUrl={getRacketPhotoUrl(
+                      racket.image_path ?? racket.image_url,
+                    )}
+                    label={racket.brand}
+                    tone={racket.tone}
+                    wide
+                  />
+                  <View
+                    style={styles.racketInfo}
+                    testID={`home-racket-info-${racket.id}`}
+                  >
+                    <View style={styles.badgeRow}>
+                      <Text style={styles.racketBrand}>{racket.brand}</Text>
+                      {racket.main ? <Pill tone="primary">메인</Pill> : null}
+                    </View>
+                    <Text style={styles.racketModel}>{racket.model}</Text>
+                    <View style={styles.stringRow}>
+                      <Pill>{racket.string}</Pill>
+                      <Text style={styles.metaText}>{racket.tension} lbs</Text>
+                    </View>
+                  </View>
+                </Pressable>
+              </View>
+            ))}
             <Pressable
-              accessibilityLabel="라켓 관리"
+              accessibilityLabel="라켓 추가"
               accessibilityRole="button"
               onPress={() => router.push('/rackets')}
+              style={({ pressed }) => [
+                styles.addRacketCard,
+                pressed && styles.pressed,
+              ]}
+              testID="home-add-racket-card"
             >
-              <Text style={styles.linkText}>관리 {'>'}</Text>
-            </Pressable>
-          }
-        />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={styles.racketList}>
-            {rackets.map((racket) => (
-              <Pressable
-                accessibilityLabel={`${racket.brand} ${racket.model} 상세 보기`}
-                accessibilityRole="button"
-                key={racket.id}
-                onPress={() =>
-                  router.push({
-                    pathname: '/racket-detail',
-                    params: { from: '/', id: racket.id },
-                  })
-                }
-                style={({ pressed }) => [
-                  styles.racketCard,
-                  pressed && styles.pressed,
-                ]}
+              <View
+                pointerEvents="none"
+                style={styles.addRacketContent}
+                testID="home-add-racket-content"
               >
-                <ProductThumb
-                  imageUrl={getRacketPhotoUrl(
-                    racket.image_path ?? racket.image_url,
-                  )}
-                  label={racket.brand}
-                  tone={racket.tone}
-                  wide
+                <AppIcon
+                  color={lightColors.mutedForeground.hex}
+                  name="plus"
+                  size={28}
                 />
-                <View style={styles.racketInfo}>
-                  <View style={styles.badgeRow}>
-                    <Text style={styles.racketBrand}>{racket.brand}</Text>
-                    {racket.main ? <Pill tone="primary">메인</Pill> : null}
-                  </View>
-                  <Text style={styles.racketModel}>{racket.model}</Text>
-                  <View style={styles.stringRow}>
-                    <Pill>{racket.string}</Pill>
-                    <Text style={styles.metaText}>{racket.tension} lbs</Text>
-                  </View>
+                <Text style={styles.addText}>라켓 추가</Text>
+              </View>
+              <View
+                pointerEvents="none"
+                style={styles.addRacketDashLayer}
+                testID="home-add-racket-dash-outline"
+              >
+                <View
+                  style={[
+                    styles.addRacketDashRow,
+                    styles.addRacketDashTop,
+                  ]}
+                  testID="home-add-racket-dash-top"
+                >
+                  {ADD_RACKET_HORIZONTAL_DASHES.map((dash) => (
+                    <View
+                      key={`top-${dash}`}
+                      style={styles.addRacketDashHorizontal}
+                    />
+                  ))}
                 </View>
-              </Pressable>
-            ))}
-            <RowButton
-              accessibilityLabel="라켓 추가"
-              onPress={() => router.push('/rackets')}
-              style={styles.addRacketCard}
-            >
-              <AppIcon
-                color={lightColors.mutedForeground.hex}
-                name="plus"
-                size={28}
-              />
-              <Text style={styles.addText}>라켓 추가</Text>
-            </RowButton>
-          </View>
-        </ScrollView>
-      </View>
+                <View
+                  style={[
+                    styles.addRacketDashRow,
+                    styles.addRacketDashBottom,
+                  ]}
+                  testID="home-add-racket-dash-bottom"
+                >
+                  {ADD_RACKET_HORIZONTAL_DASHES.map((dash) => (
+                    <View
+                      key={`bottom-${dash}`}
+                      style={styles.addRacketDashHorizontal}
+                    />
+                  ))}
+                </View>
+                <View
+                  style={[
+                    styles.addRacketDashColumn,
+                    styles.addRacketDashLeft,
+                  ]}
+                  testID="home-add-racket-dash-left"
+                >
+                  {ADD_RACKET_VERTICAL_DASHES.map((dash) => (
+                    <View
+                      key={`left-${dash}`}
+                      style={styles.addRacketDashVertical}
+                    />
+                  ))}
+                </View>
+                <View
+                  style={[
+                    styles.addRacketDashColumn,
+                    styles.addRacketDashRight,
+                  ]}
+                  testID="home-add-racket-dash-right"
+                >
+                  {ADD_RACKET_VERTICAL_DASHES.map((dash) => (
+                    <View
+                      key={`right-${dash}`}
+                      style={styles.addRacketDashVertical}
+                    />
+                  ))}
+                </View>
+              </View>
+            </Pressable>
+          </ScrollView>
+        </View>
       ) : null}
 
       <View style={styles.section}>
@@ -690,104 +809,108 @@ export default function HomeScreen() {
       </View>
 
       {menuSettings['string-booking'] ? (
-      <View style={styles.section}>
-        <SectionHeader title="추천 스트링" />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={styles.featuredList}>
-          {featuredStrings.map((item) => (
-            <Card key={item.id} style={styles.featuredCard}>
-              <View style={styles.featuredImageWrap}>
-                {item.imageUrl ? (
-                  <Image
-                    accessibilityIgnoresInvertColors
-                    resizeMode="cover"
-                    source={{
-                      uri: getStringPhotoUrl(item.imageUrl) ?? item.imageUrl,
-                    }}
-                    style={styles.featuredImage}
-                  />
-                ) : null}
-                <View style={styles.featuredBadge}>
-                  <Pill tone={item.tone}>{item.label}</Pill>
-                </View>
-              </View>
-              <View style={styles.featuredBody}>
-                <Text style={styles.metaText}>{item.brand}</Text>
-                <Text style={styles.featuredTitle}>{item.name}</Text>
-                <View style={styles.featuredMetaRow}>
-                  <Text style={styles.featuredPrice}>
-                    {item.price !== null
-                      ? `${item.price.toLocaleString('ko-KR')}원`
-                      : '가격 문의'}
-                  </Text>
-                  {item.gauge ? (
-                    <Text style={styles.metaText}>{item.gauge}mm</Text>
-                  ) : null}
-                </View>
-                {item.description ? (
-                  <Text style={styles.mutedText} numberOfLines={2}>
-                    {item.description}
-                  </Text>
-                ) : null}
-              </View>
-            </Card>
-          ))}
+        <View style={styles.section}>
+          <SectionHeader title="추천 스트링" />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.featuredList}>
+              {featuredStrings.map((item) => (
+                <Pressable
+                  accessibilityLabel={`${item.brand} ${item.name} 상세 보기`}
+                  accessibilityRole="button"
+                  key={item.id}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/string-detail',
+                      params: { from: '/', id: item.id },
+                    })
+                  }
+                  style={({ pressed }) => [
+                    featuredStringCardSizing,
+                    pressed && styles.pressed,
+                  ]}
+                  testID={`home-featured-string-${item.id}`}
+                >
+                  <Card
+                    style={[styles.featuredCard, featuredStringCardSizing]}
+                    testID={`home-featured-string-card-${item.id}`}
+                  >
+                    <View style={styles.featuredImageWrap}>
+                      {item.imageUrl ? (
+                        <Image
+                          accessibilityIgnoresInvertColors
+                          resizeMode="cover"
+                          source={{
+                            uri:
+                              getStringPhotoUrl(item.imageUrl) ??
+                              item.imageUrl,
+                          }}
+                          style={styles.featuredImage}
+                        />
+                      ) : null}
+                      <View style={styles.featuredBadge}>
+                        <Pill tone={item.tone}>{item.label}</Pill>
+                      </View>
+                    </View>
+                    <View style={styles.featuredBody}>
+                      <Text numberOfLines={1} style={styles.metaText}>
+                        {item.brand}
+                      </Text>
+                      <Text
+                        ellipsizeMode="tail"
+                        numberOfLines={2}
+                        style={styles.featuredTitle}
+                        testID={`home-featured-string-title-${item.id}`}
+                      >
+                        {item.name}
+                      </Text>
+                      <View style={styles.featuredMetaRow}>
+                        <Text numberOfLines={1} style={styles.featuredPrice}>
+                          {item.price !== null
+                            ? `${item.price.toLocaleString('ko-KR')}원`
+                            : '가격 문의'}
+                        </Text>
+                        {item.gauge ? (
+                          <Text numberOfLines={1} style={styles.metaText}>
+                            {item.gauge}mm
+                          </Text>
+                        ) : null}
+                      </View>
+                      {item.description ? (
+                        <Text
+                          ellipsizeMode="tail"
+                          numberOfLines={2}
+                          style={styles.mutedText}
+                          testID={`home-featured-string-description-${item.id}`}
+                        >
+                          {item.description}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </Card>
+                </Pressable>
+              ))}
+            </View>
+          </ScrollView>
         </View>
-        </ScrollView>
-      </View>
       ) : null}
 
-      <View style={[styles.section, !menuSettings.shop && styles.hiddenSection]}>
-        <SectionHeader title="샵 카테고리" />
-        {menuSettings.shop ? (
-        <View style={styles.categoryGrid}>
-          {categories.map((category) => {
-            const imageUrl = getAppAssetUrl(
-              category.image_path ?? category.image_url,
-            );
-            const imageSource = imageUrl ? { uri: imageUrl } : null;
-
-            return (
-              <Pressable
-                accessibilityLabel={`${category.label} 보기`}
-                accessibilityRole="button"
-                key={category.id}
-                onPress={() => router.push(category.route ?? '/shop')}
-                style={({ pressed }) => [
-                  styles.categoryCard,
-                  { width: categoryCardWidth },
-                  pressed && styles.pressed,
-                ]}
-              >
-                {imageSource ? (
-                  <Image
-                    accessibilityIgnoresInvertColors
-                    resizeMode="cover"
-                    source={imageSource}
-                    style={styles.categoryImage}
-                  />
-                ) : null}
-                <View style={styles.categoryOverlay} />
-                <View style={styles.categoryTextWrap}>
-                  <Text style={styles.categoryMeta}>SHOP</Text>
-                  <Text style={styles.categoryText}>{category.label}</Text>
-                </View>
-              </Pressable>
-            );
-          })}
-        </View>
-        ) : null}
-      </View>
-
-      <Text style={styles.footerText}>YellowBall v1.0.0 · MVP</Text>
     </AppScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  homeLayoutProbeWrap: {
+    height: 0,
+    paddingHorizontal: screenHorizontalPadding,
+    width: '100%',
+  },
+  homeLayoutProbe: {
+    height: 0,
+    width: '100%',
+  },
   heroSection: {
     gap: theme.spacing[3],
-    paddingHorizontal: theme.spacing[5],
+    paddingHorizontal: screenHorizontalPadding,
   },
   greeting: {
     color: lightColors.mutedForeground.hex,
@@ -859,90 +982,70 @@ const styles = StyleSheet.create({
     fontWeight: theme.typography.fontWeight.bold,
   },
   quickGrid: {
-    flexDirection: 'row',
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[5],
-  },
-  bannerList: {
-    flexDirection: 'row',
-    gap: theme.spacing[3],
-    paddingHorizontal: theme.spacing[5],
-  },
-  homeBanner: {
-    borderRadius: theme.borderRadius.lg,
-    height: 164,
-    overflow: 'hidden',
-    padding: theme.spacing[4],
-    width: 292,
-  },
-  homeBannerImage: {
-    height: '100%',
-    left: 0,
-    position: 'absolute',
-    top: 0,
+    alignContent: 'flex-start',
+    alignItems: 'stretch',
+    paddingHorizontal: screenHorizontalPadding,
     width: '100%',
   },
-  homeBannerOverlay: {
-    backgroundColor: 'rgba(12,34,27,0.46)',
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-    right: 0,
-    top: 0,
+  quickRow: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: quickActionGap,
+    width: '100%',
   },
-  homeBannerText: {
-    flex: 1,
-    gap: theme.spacing[1],
-    justifyContent: 'flex-end',
-    maxWidth: 210,
-    zIndex: 1,
+  quickActionCell: {
+    flexGrow: 0,
+    flexShrink: 0,
+    minWidth: 0,
   },
-  homeBannerMeta: {
-    color: lightColors.accent.hex,
-    fontFamily: theme.typography.fontFamily.body,
-    fontSize: 11,
-    fontWeight: theme.typography.fontWeight.bold,
+  quickAction: {
+    alignItems: 'stretch',
+    flexGrow: 0,
+    flexShrink: 0,
+    minWidth: 0,
   },
-  homeBannerTitle: {
-    color: lightColors.primaryForeground.hex,
-    fontFamily: theme.typography.fontFamily.display,
-    fontSize: 18,
-    fontWeight: theme.typography.fontWeight.bold,
-    lineHeight: 24,
+  quickActionIconSlot: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
   },
-  homeBannerSub: {
-    color: 'rgba(252,250,244,0.82)',
+  quickActionSpacer: {
+    flexShrink: 0,
+    width: quickActionGap,
+  },
+  quickActionFallback: {
+    width: '100%',
+  },
+  quickActionLabel: {
+    color: lightColors.foreground.hex,
     fontFamily: theme.typography.fontFamily.body,
     fontSize: 12,
-    lineHeight: 17,
+    lineHeight: 16,
+    marginTop: theme.spacing[2],
+    maxWidth: '100%',
+    minWidth: 0,
+    textAlign: 'center',
+    width: '100%',
   },
-  homeBannerButton: {
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: lightColors.accent.hex,
-    borderRadius: 999,
-    height: 30,
-    justifyContent: 'center',
-    marginTop: theme.spacing[3],
-    paddingHorizontal: theme.spacing[3],
-    zIndex: 1,
-  },
-  homeBannerButtonText: {
-    color: lightColors.accentForeground.hex,
+  quickActionSub: {
+    color: lightColors.mutedForeground.hex,
     fontFamily: theme.typography.fontFamily.body,
     fontSize: 11,
-    fontWeight: theme.typography.fontWeight.bold,
+    lineHeight: 15,
+    marginTop: 2,
+    maxWidth: '100%',
+    minWidth: 0,
+    textAlign: 'center',
+    width: '100%',
   },
   section: {
     gap: theme.spacing[3],
-    paddingHorizontal: theme.spacing[5],
-  },
-  hiddenSection: {
-    display: 'none',
+    paddingHorizontal: screenHorizontalPadding,
   },
   racketSection: {
     gap: theme.spacing[3],
-    paddingLeft: theme.spacing[5],
+    paddingHorizontal: screenHorizontalPadding,
   },
   linkText: {
     color: lightColors.mutedForeground.hex,
@@ -1055,17 +1158,23 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   racketList: {
+    alignItems: 'flex-start',
     flexDirection: 'row',
-    gap: theme.spacing[3],
     paddingBottom: theme.spacing[1],
-    paddingRight: theme.spacing[5],
   },
   racketCard: {
-    gap: theme.spacing[3],
+    flexShrink: 0,
+    marginRight: theme.spacing[3],
+    maxWidth: 210,
+    minWidth: 210,
     width: 210,
+  },
+  racketCardPressable: {
+    width: '100%',
   },
   racketInfo: {
     gap: theme.spacing[1],
+    marginTop: theme.spacing[4],
   },
   racketBrand: {
     color: lightColors.mutedForeground.hex,
@@ -1086,21 +1195,73 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing[1],
   },
   addRacketCard: {
-    alignItems: 'center',
-    borderColor: lightColors.border.hex,
+    backgroundColor: 'transparent',
     borderRadius: theme.borderRadius.lg,
-    borderStyle: 'dashed',
-    borderWidth: 2,
-    gap: theme.spacing[2],
-    justifyContent: 'center',
+    flexShrink: 0,
+    height: 198,
+    maxWidth: 140,
     minHeight: 198,
+    minWidth: 140,
+    overflow: 'hidden',
+    position: 'relative',
     width: 140,
+  },
+  addRacketContent: {
+    alignItems: 'center',
+    flexDirection: 'column',
+    gap: theme.spacing[2],
+    height: 198,
+    justifyContent: 'center',
+    width: 140,
+  },
+  addRacketDashLayer: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: theme.borderRadius.lg,
+    overflow: 'hidden',
+  },
+  addRacketDashRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    left: theme.spacing[5],
+    position: 'absolute',
+    right: theme.spacing[5],
+  },
+  addRacketDashTop: {
+    top: 1,
+  },
+  addRacketDashBottom: {
+    bottom: 1,
+  },
+  addRacketDashColumn: {
+    bottom: theme.spacing[6],
+    justifyContent: 'space-between',
+    position: 'absolute',
+    top: theme.spacing[6],
+  },
+  addRacketDashLeft: {
+    left: 1,
+  },
+  addRacketDashRight: {
+    right: 1,
+  },
+  addRacketDashHorizontal: {
+    backgroundColor: lightColors.border.hex,
+    borderRadius: 1,
+    height: 2,
+    width: theme.spacing[2],
+  },
+  addRacketDashVertical: {
+    backgroundColor: lightColors.border.hex,
+    borderRadius: 1,
+    height: theme.spacing[2],
+    width: 2,
   },
   addText: {
     color: lightColors.mutedForeground.hex,
     fontFamily: theme.typography.fontFamily.body,
     fontSize: 12,
     fontWeight: theme.typography.fontWeight.medium,
+    textAlign: 'center',
   },
   hoursCard: {
     alignItems: 'center',
@@ -1136,13 +1297,14 @@ const styles = StyleSheet.create({
   },
   featuredList: {
     flexDirection: 'row',
-    gap: theme.spacing[2],
-    paddingRight: theme.spacing[5],
+    gap: featuredStringGap,
+    paddingRight: screenHorizontalPadding,
   },
   featuredCard: {
+    height: featuredStringCardHeight,
     overflow: 'hidden',
     padding: 0,
-    width: 160,
+    width: '100%',
   },
   featuredImageWrap: {
     backgroundColor: lightColors.secondary.hex,
@@ -1161,6 +1323,7 @@ const styles = StyleSheet.create({
     top: theme.spacing[2],
   },
   featuredBody: {
+    flex: 1,
     gap: theme.spacing[1],
     padding: theme.spacing[3],
   },
@@ -1169,62 +1332,20 @@ const styles = StyleSheet.create({
     fontFamily: theme.typography.fontFamily.display,
     fontSize: 14,
     fontWeight: theme.typography.fontWeight.semibold,
+    lineHeight: 18,
   },
   featuredMetaRow: {
     alignItems: 'center',
     flexDirection: 'row',
+    gap: theme.spacing[2],
     justifyContent: 'space-between',
   },
   featuredPrice: {
     color: lightColors.foreground.hex,
+    flexShrink: 1,
     fontFamily: theme.typography.fontFamily.body,
     fontSize: 13,
     fontWeight: theme.typography.fontWeight.bold,
-  },
-  categoryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  categoryCard: {
-    aspectRatio: 4 / 3,
-    backgroundColor: lightColors.secondary.hex,
-    borderRadius: theme.borderRadius.lg,
-    justifyContent: 'flex-end',
-    marginBottom: theme.spacing[2],
-    overflow: 'hidden',
-  },
-  categoryImage: {
-    ...StyleSheet.absoluteFillObject,
-    height: '100%',
-    width: '100%',
-  },
-  categoryOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(8,20,14,0.34)',
-  },
-  categoryTextWrap: {
-    gap: 2,
-    padding: theme.spacing[3],
-  },
-  categoryMeta: {
-    color: 'rgba(255,255,255,0.78)',
-    fontFamily: theme.typography.fontFamily.body,
-    fontSize: 10,
-    fontWeight: theme.typography.fontWeight.bold,
-  },
-  categoryText: {
-    color: lightColors.primaryForeground.hex,
-    fontFamily: theme.typography.fontFamily.body,
-    fontSize: 15,
-    fontWeight: theme.typography.fontWeight.bold,
-  },
-  footerText: {
-    color: lightColors.mutedForeground.hex,
-    fontFamily: theme.typography.fontFamily.body,
-    fontSize: 11,
-    paddingBottom: theme.spacing[2],
-    textAlign: 'center',
   },
   pressed: {
     opacity: theme.opacity.pressed,

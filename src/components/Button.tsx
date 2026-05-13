@@ -5,11 +5,12 @@ import {
   PressableProps,
   StyleProp,
   StyleSheet,
-  Text,
   TextStyle,
+  View,
   ViewStyle,
 } from 'react-native';
 
+import { Text } from '@/components/AppText';
 import { sharedControlStyles, sharedTextStyles } from '../constants/componentStyles';
 import { lightColors, theme } from '../constants/theme';
 
@@ -34,67 +35,126 @@ export function Button({
   style,
   textStyle,
   accessibilityLabel,
+  testID,
   ...pressableProps
 }: ButtonProps) {
   const isDisabled = disabled || loading;
   const variantStyle = buttonVariantStyles[variant];
   const sizeStyle = buttonSizeMap[size];
+  const flattenedStyle = StyleSheet.flatten(style);
+  const flattenedTextStyle = StyleSheet.flatten(textStyle);
 
   return (
-    <Pressable
-      accessibilityLabel={
-        accessibilityLabel ?? (typeof children === 'string' ? children : undefined)
-      }
-      accessibilityRole="button"
-      accessibilityState={{ disabled: isDisabled, busy: loading }}
-      disabled={isDisabled}
-      style={({ pressed }) => [
+    <View
+      style={[
         styles.base,
-        sizeStyle.button,
+        sizeStyle.surface,
         sharedControlStyles.border,
         variantStyle.button,
         isDisabled && sharedControlStyles.disabled,
-        pressed && !isDisabled && sharedControlStyles.pressed,
-        style,
+        flattenedStyle,
       ]}
-      {...pressableProps}
+      testID={testID ? `${testID}-surface` : undefined}
     >
-      {loading ? (
-        <ActivityIndicator
-          color={variantStyle.text.color}
-          size="small"
-          testID="button-loading-spinner"
-        />
-      ) : null}
-      <Text style={[sharedTextStyles.control, sizeStyle.text, variantStyle.text, textStyle]}>
-        {children}
-      </Text>
-    </Pressable>
+      <Pressable
+        accessibilityLabel={
+          accessibilityLabel ?? (typeof children === 'string' ? children : undefined)
+        }
+        accessibilityRole="button"
+        accessibilityState={{ disabled: isDisabled, busy: loading }}
+        disabled={isDisabled}
+        style={({ pressed }) => [
+          styles.pressable,
+          sizeStyle.surface,
+          pressed && !isDisabled && sharedControlStyles.pressed,
+        ]}
+        testID={testID}
+        {...pressableProps}
+      >
+        <View
+          pointerEvents="none"
+          style={[styles.content, sizeStyle.content]}
+          testID={testID ? `${testID}-content` : undefined}
+        >
+          {loading ? (
+            <ActivityIndicator
+              color={variantStyle.text.color}
+              size="small"
+              testID="button-loading-spinner"
+            />
+          ) : null}
+          <Text
+            adjustsFontSizeToFit
+            ellipsizeMode="tail"
+            minimumFontScale={0.86}
+            numberOfLines={1}
+            style={[
+              sharedTextStyles.control,
+              styles.label,
+              sizeStyle.text,
+              variantStyle.text,
+              flattenedTextStyle,
+            ]}
+          >
+            {children}
+          </Text>
+        </View>
+      </Pressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   base: {
-    alignItems: 'center',
+    alignSelf: 'stretch',
     borderRadius: theme.borderRadius.md,
+    justifyContent: 'center',
+    minWidth: 0,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  pressable: {
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+    minWidth: 0,
+  },
+  content: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
     flexDirection: 'row',
     gap: theme.spacing[2],
     justifyContent: 'center',
+    minWidth: 0,
+  },
+  label: {
+    flexShrink: 1,
+    includeFontPadding: false,
+    minWidth: 0,
+    textAlign: 'center',
   },
 });
 
 const buttonSizeStyleSheet = StyleSheet.create({
-  smButton: {
+  smSurface: {
+    minHeight: theme.controlHeights.sm,
+  },
+  smContent: {
     minHeight: theme.controlHeights.sm,
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[1],
   },
-  mdButton: {
+  mdSurface: {
+    minHeight: theme.controlHeights.md,
+  },
+  mdContent: {
     minHeight: theme.controlHeights.md,
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[2],
   },
-  lgButton: {
+  lgSurface: {
+    minHeight: theme.controlHeights.lg,
+  },
+  lgContent: {
     minHeight: theme.controlHeights.lg,
     paddingHorizontal: theme.spacing[6],
     paddingVertical: theme.spacing[2],
@@ -103,15 +163,18 @@ const buttonSizeStyleSheet = StyleSheet.create({
 
 const buttonSizeStylesMap = {
   sm: {
-    button: buttonSizeStyleSheet.smButton,
+    surface: buttonSizeStyleSheet.smSurface,
+    content: buttonSizeStyleSheet.smContent,
     text: sharedTextStyles.control,
   },
   md: {
-    button: buttonSizeStyleSheet.mdButton,
+    surface: buttonSizeStyleSheet.mdSurface,
+    content: buttonSizeStyleSheet.mdContent,
     text: sharedTextStyles.control,
   },
   lg: {
-    button: buttonSizeStyleSheet.lgButton,
+    surface: buttonSizeStyleSheet.lgSurface,
+    content: buttonSizeStyleSheet.lgContent,
     text: sharedTextStyles.body,
   },
 };

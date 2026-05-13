@@ -110,6 +110,7 @@ export type CalendarPickerProps = {
   onSelectDate: (date: string) => void;
   markedDates?: ReadonlySet<string>;
   minDate?: string;
+  maxDate?: string;
   getDateStatus?: (date: string) => CalendarDateStatus | null;
   showStatusLegend?: boolean;
 };
@@ -118,6 +119,7 @@ export function CalendarPicker({
   label,
   getDateStatus,
   markedDates,
+  maxDate,
   minDate,
   onSelectDate,
   selectedDate,
@@ -135,6 +137,7 @@ export function CalendarPicker({
     [viewDate],
   );
   const minDateKey = minDate ?? null;
+  const maxDateKey = maxDate ?? null;
   const todayKey = formatDateKey(new Date());
 
   const moveMonth = (delta: number) => {
@@ -274,7 +277,10 @@ export function CalendarPicker({
         {monthRows.map((week, weekIndex) => (
           <View key={`week-${weekIndex}`} style={styles.calendarRow}>
             {week.map((cell, dayIndex) => {
-              const isDisabled = !cell || Boolean(minDateKey && cell.key < minDateKey);
+              const isDisabled =
+                !cell ||
+                Boolean(minDateKey && cell.key < minDateKey) ||
+                Boolean(maxDateKey && cell.key > maxDateKey);
               const isSelected = cell?.key === selectedDate;
               const isMarked = Boolean(cell && markedDates?.has(cell.key));
               const isToday = cell?.key === todayKey;
@@ -370,13 +376,17 @@ export type TimePickerProps = {
   endHour?: number;
   minuteStep?: number;
   minTime?: string | null;
+  maxTime?: string | null;
+  minSelectableTime?: string | null;
 };
 
 export function TimePicker({
   disabled = false,
   endHour = 23,
   label,
+  maxTime,
   minuteStep = 30,
+  minSelectableTime,
   minTime,
   onChange,
   startHour = 0,
@@ -386,9 +396,12 @@ export function TimePicker({
   const options = useMemo(
     () =>
       buildTimeOptions(startHour, endHour, minuteStep).filter(
-        (option) => !minTime || option > minTime,
+        (option) =>
+          (!minSelectableTime || option >= minSelectableTime) &&
+          (!minTime || option > minTime) &&
+          (!maxTime || option <= maxTime),
       ),
-    [endHour, minTime, minuteStep, startHour],
+    [endHour, maxTime, minSelectableTime, minTime, minuteStep, startHour],
   );
 
   return (
@@ -449,23 +462,31 @@ export function TimePicker({
 
 export type DateTimeCalendarPickerProps = {
   label?: string;
+  timeLabel?: string;
   value: string;
   onChange: (value: string) => void;
   minDate?: string;
+  maxDate?: string;
   startHour?: number;
   endHour?: number;
   minuteStep?: number;
   minDateTime?: string;
+  maxTime?: string | null;
+  minSelectableTime?: string | null;
 };
 
 export function DateTimeCalendarPicker({
   endHour = 23,
   label,
+  maxTime,
+  maxDate,
   minDate,
   minDateTime,
+  minSelectableTime,
   minuteStep = 30,
   onChange,
   startHour = 0,
+  timeLabel,
   value,
 }: DateTimeCalendarPickerProps) {
   const parsed = parseDateTime(value) ?? new Date();
@@ -490,12 +511,16 @@ export function DateTimeCalendarPicker({
     <View style={styles.dateTimeContainer}>
       {label ? <Typography variant="caption">{label}</Typography> : null}
       <CalendarPicker
+        maxDate={maxDate}
         minDate={minDateKey}
         onSelectDate={(date) => handleChange(combineDateTime(date, selectedTime))}
         selectedDate={selectedDate}
       />
       <TimePicker
         endHour={endHour}
+        label={timeLabel}
+        maxTime={maxTime}
+        minSelectableTime={minSelectableTime}
         minTime={minTime}
         minuteStep={minuteStep}
         onChange={(time) => handleChange(combineDateTime(selectedDate, time))}

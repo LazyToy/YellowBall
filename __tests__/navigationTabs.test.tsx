@@ -2,12 +2,23 @@ import React from 'react';
 import { render } from '@testing-library/react-native';
 
 const screenNames: string[] = [];
+let tabsProps: Record<string, unknown> | null = null;
 let mockMenuSettings: Record<string, boolean>;
 
 jest.mock('expo-router', () => {
   const React = require('react');
 
-  const Tabs = ({ children }: { children: React.ReactNode }) => <>{children}</>;
+  const Tabs = ({
+    children,
+    ...props
+  }: {
+    children: React.ReactNode;
+    [key: string]: unknown;
+  }) => {
+    tabsProps = props;
+
+    return <>{children}</>;
+  };
   Tabs.Screen = ({
     name,
     options,
@@ -60,6 +71,7 @@ jest.mock('expo-constants', () => ({
 describe('탭 네비게이션', () => {
   beforeEach(() => {
     screenNames.length = 0;
+    tabsProps = null;
     mockMenuSettings = {
       'string-booking': true,
       'demo-booking': true,
@@ -87,6 +99,16 @@ describe('탭 네비게이션', () => {
       'shop',
       'me',
     ]);
+  });
+
+  test('uses tab history for Android hardware back navigation', () => {
+    const TabsLayout = require('../app/(tabs)/_layout').default;
+
+    render(<TabsLayout />);
+
+    expect(tabsProps).toEqual(
+      expect.objectContaining({ backBehavior: 'history' }),
+    );
   });
 
   test('메뉴 설정에서 예약과 쇼핑을 끄면 실제 앱 탭도 숨긴다', () => {

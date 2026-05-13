@@ -1,7 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Pressable,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 
+import { Text } from '@/components/AppText';
 import {
   AppScrollView,
   Card,
@@ -50,6 +56,7 @@ const getServiceBookingListLabel = (booking: ServiceBookingWithMeta) =>
 
 export default function BookingScreen() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
   const { profile } = useAuth();
   const menuSettings = useAppMenuSettings();
   const profileId = profile?.id;
@@ -57,6 +64,7 @@ export default function BookingScreen() {
   const [demoBookings, setDemoBookings] = useState<DemoBooking[]>([]);
   const [tab, setTab] = useState<BookingTab>('upcoming');
   const [message, setMessage] = useState<string>();
+  const compactLayout = width > 0 && width < 360;
 
   const loadBookings = useCallback(async () => {
     if (!profileId) {
@@ -110,9 +118,16 @@ export default function BookingScreen() {
           {menuSettings['string-booking'] ? (
           <BookingCta
             badge="평균 24시간"
+            compact={compactLayout}
             description="내 라켓에 맞는 스트링·텐션 선택"
             glyph="W"
-            onPress={() => router.push('/new-booking')}
+            onPress={() =>
+              router.push({
+                pathname: '/new-booking',
+                params: { mode: 'stringing' },
+              })
+            }
+            testID="booking-cta-string-booking"
             title="스트링 작업 예약"
             tone="primary"
           />
@@ -120,9 +135,16 @@ export default function BookingScreen() {
           {menuSettings['demo-booking'] ? (
           <BookingCta
             badge="1회 무료"
+            compact={compactLayout}
             description="샵에서 신상 라켓 직접 사용해보기"
             glyph="S"
-            onPress={() => router.push('/new-booking')}
+            onPress={() =>
+              router.push({
+                pathname: '/new-booking',
+                params: { mode: 'demo' },
+              })
+            }
+            testID="booking-cta-demo-booking"
             title="라켓 시타 예약"
             tone="accent"
           />
@@ -154,6 +176,7 @@ export default function BookingScreen() {
 
       {tab === 'upcoming' ? (
         <UpcomingBookings
+          compact={compactLayout}
           demoBookings={demoBookings}
           serviceBookings={serviceBookings}
           onPressDetail={openBookingDetail}
@@ -172,33 +195,67 @@ export default function BookingScreen() {
 
 function BookingCta({
   badge,
+  compact,
   description,
   glyph,
   onPress,
+  testID,
   title,
   tone,
 }: {
   badge: string;
+  compact: boolean;
   description: string;
   glyph: string;
   onPress: () => void;
+  testID: string;
   title: string;
   tone: 'primary' | 'accent';
 }) {
   return (
-    <RowButton accessibilityLabel={title} onPress={onPress} style={styles.ctaCard}>
-      <GlyphBubble glyph={glyph} tone={tone} size={48} />
-      <View style={styles.flex}>
-        <View style={styles.titleRow}>
-          <Text style={styles.ctaTitle}>{title}</Text>
-          <Pill>{badge}</Pill>
+    <View
+      style={[styles.ctaCardSurface, compact && styles.ctaCardSurfaceCompact]}
+      testID={`${testID}-surface`}
+    >
+      <Pressable
+        accessibilityLabel={title}
+        accessibilityRole="button"
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.ctaPressable,
+          compact && styles.ctaPressableCompact,
+          pressed && styles.pressed,
+        ]}
+        testID={testID}
+      >
+        <View
+          pointerEvents="none"
+          style={[styles.ctaInnerRow, compact && styles.ctaInnerRowCompact]}
+          testID={`${testID}-row`}
+        >
+          <View style={styles.ctaIconSlot}>
+            <GlyphBubble glyph={glyph} tone={tone} size={compact ? 44 : 52} />
+          </View>
+          <View
+            style={styles.ctaContent}
+            testID={`${testID}-content`}
+          >
+            <View style={styles.ctaTitleRow}>
+              <Text ellipsizeMode="tail" numberOfLines={1} style={styles.ctaTitle}>
+                {title}
+              </Text>
+              <Pill>{badge}</Pill>
+            </View>
+            <Text numberOfLines={compact ? 2 : 1} style={styles.mutedText}>
+              {description}
+            </Text>
+          </View>
+          <View style={styles.chevronSlot}>
+            <Chevron />
+          </View>
         </View>
-        <Text numberOfLines={1} style={styles.mutedText}>
-          {description}
-        </Text>
-      </View>
-      <Chevron />
-    </RowButton>
+      </Pressable>
+    </View>
   );
 }
 
@@ -232,10 +289,12 @@ function BookingTabButton({
 }
 
 function UpcomingBookings({
+  compact,
   demoBookings,
   onPressDetail,
   serviceBookings,
 }: {
+  compact: boolean;
   demoBookings: DemoBooking[];
   onPressDetail: (id: string) => void;
   serviceBookings: ServiceBookingWithMeta[];
@@ -260,6 +319,7 @@ function UpcomingBookings({
       {activeBookings.map((booking) => (
         <ServiceBookingCard
           booking={booking}
+          compact={compact}
           key={booking.id}
           onPress={() => onPressDetail(booking.id)}
         />
@@ -273,9 +333,11 @@ function UpcomingBookings({
 
 function ServiceBookingCard({
   booking,
+  compact,
   onPress,
 }: {
   booking: ServiceBookingWithMeta;
+  compact: boolean;
   onPress: () => void;
 }) {
   const currentIndex = Math.max(
@@ -286,58 +348,94 @@ function ServiceBookingCard({
   const pending = booking.status === 'requested';
 
   return (
-    <RowButton
-      accessibilityLabel="예약 상세 보기"
-      onPress={onPress}
-      style={[styles.bookingCard, pending && styles.pendingCard]}
+    <View
+      style={styles.bookingCardSurface}
+      testID="service-booking-card-surface"
     >
-      <View style={styles.cardColumn}>
-        <View style={styles.bookingCardHeader}>
-          <GlyphBubble glyph="W" tone="primary" size={40} />
-          <View style={styles.flex}>
-            <View style={styles.titleRow}>
-              <Text style={styles.bookingType}>스트링 작업</Text>
-              <Pill tone={pending ? 'accent' : 'primary'}>
-                {getServiceBookingListLabel(booking)}
-              </Pill>
-            </View>
-            <Text style={styles.metaText}>예약 #{booking.id.slice(0, 6)}</Text>
-          </View>
-          <Chevron />
-        </View>
-
-        <View style={styles.detailBox}>
-          <DetailRow label="라켓" value={getBookingRacketLabel(booking)} />
-          <DetailRow label="스트링" value={getBookingStringLabel(booking)} />
-          <DetailRow label="예약 시간" value={getBookingSlotLabel(booking)} />
-          <DetailRow
-            label="텐션"
-            value={`${booking.tension_main}/${booking.tension_cross} lbs`}
-          />
-        </View>
-
-        {pending ? (
-          <View style={styles.pendingNotice}>
-            <Text style={styles.pendingNoticeText}>관리자 확인 중 · 통상 30분 이내 응답</Text>
-          </View>
-        ) : null}
-
-        <View style={styles.timeline}>
-          {timelineLabels.map((label, index) => {
-            const filled = index <= compactProgress;
-
-            return (
-              <View key={label} style={styles.timelineItem}>
-                <View style={[styles.timelineBar, filled && styles.timelineBarActive]} />
-                <Text style={[styles.timelineLabel, filled && styles.timelineLabelActive]}>
-                  {label}
+      <Pressable
+        accessibilityLabel="예약 상세 보기"
+        accessibilityRole="button"
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.bookingCardTouch,
+          pressed && styles.pressed,
+        ]}
+      >
+        <View
+          pointerEvents="none"
+          style={[
+            styles.cardColumn,
+            styles.bookingCardContent,
+            compact && styles.bookingCardContentCompact,
+          ]}
+          testID="service-booking-card-content"
+        >
+          <View style={styles.bookingCardHeader}>
+            <GlyphBubble glyph="W" tone="primary" size={40} />
+            <View style={styles.flex}>
+              <View style={styles.titleRow}>
+                <Text numberOfLines={1} style={styles.bookingType}>
+                  스트링 작업
                 </Text>
+                <Pill tone={pending ? 'accent' : 'primary'}>
+                  {getServiceBookingListLabel(booking)}
+                </Pill>
               </View>
-            );
-          })}
+              <Text style={styles.metaText}>예약 #{booking.id.slice(0, 6)}</Text>
+            </View>
+            <View style={styles.chevronSlot}>
+              <Chevron />
+            </View>
+          </View>
+
+          <View style={styles.detailBox} testID="service-booking-detail-box">
+            <DetailRow
+              compact={compact}
+              label="라켓"
+              value={getBookingRacketLabel(booking)}
+            />
+            <DetailRow
+              compact={compact}
+              label="스트링"
+              value={getBookingStringLabel(booking)}
+            />
+            <DetailRow
+              compact={compact}
+              label="예약 시간"
+              value={getBookingSlotLabel(booking)}
+            />
+            <DetailRow
+              compact={compact}
+              label="텐션"
+              value={`${booking.tension_main}/${booking.tension_cross} lbs`}
+            />
+          </View>
+
+          {pending ? (
+            <View style={styles.pendingNotice}>
+              <Text style={styles.pendingNoticeText}>
+                관리자 확인 중 · 통상 30분 이내 응답
+              </Text>
+            </View>
+          ) : null}
+
+          <View style={styles.timeline}>
+            {timelineLabels.map((label, index) => {
+              const filled = index <= compactProgress;
+
+              return (
+                <View key={label} style={styles.timelineItem}>
+                  <View style={[styles.timelineBar, filled && styles.timelineBarActive]} />
+                  <Text style={[styles.timelineLabel, filled && styles.timelineLabelActive]}>
+                    {label}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
         </View>
-      </View>
-    </RowButton>
+      </Pressable>
+    </View>
   );
 }
 
@@ -411,11 +509,23 @@ function PastBookings({
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
+function DetailRow({
+  compact,
+  label,
+  value,
+}: {
+  compact: boolean;
+  label: string;
+  value: string;
+}) {
   return (
-    <View style={styles.detailRow}>
+    <View style={[styles.detailRow, compact && styles.detailRowCompact]}>
       <Text style={styles.detailLabel}>{label}</Text>
-      <Text numberOfLines={2} style={styles.detailValue}>
+      <Text
+        numberOfLines={compact ? 3 : 2}
+        style={[styles.detailValue, compact && styles.detailValueCompact]}
+        testID={`service-booking-detail-value-${label}`}
+      >
         {value}
       </Text>
     </View>
@@ -430,30 +540,80 @@ const styles = StyleSheet.create({
   ctaList: {
     gap: theme.spacing[3],
   },
-  ctaCard: {
+  ctaCardSurface: {
     backgroundColor: lightColors.card.hex,
     borderColor: lightColors.border.hex,
     borderRadius: theme.borderRadius.lg,
     borderWidth: theme.borderWidth.hairline,
-    gap: theme.spacing[3],
-    padding: theme.spacing[4],
+    minHeight: 104,
+    minWidth: 0,
+    overflow: 'hidden',
+    width: '100%',
+  },
+  ctaCardSurfaceCompact: {
+    minHeight: 96,
+  },
+  ctaPressable: {
+    minHeight: 104,
+    width: '100%',
+  },
+  ctaPressableCompact: {
+    minHeight: 96,
+  },
+  ctaIconSlot: {
+    flexShrink: 0,
+    marginRight: theme.spacing[3],
+  },
+  ctaInnerRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    minHeight: 104,
+    minWidth: 0,
+    paddingHorizontal: theme.spacing[4],
+    paddingVertical: theme.spacing[3],
+    width: '100%',
+  },
+  ctaInnerRowCompact: {
+    minHeight: 96,
+    paddingHorizontal: theme.spacing[3],
+  },
+  ctaContent: {
+    flex: 1,
+    flexShrink: 1,
+    gap: theme.spacing[1],
+    marginRight: theme.spacing[2],
+    minWidth: 0,
+  },
+  ctaTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    gap: theme.spacing[2],
+    minWidth: 0,
   },
   titleRow: {
     alignItems: 'center',
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: theme.spacing[2],
+    minWidth: 0,
   },
   ctaTitle: {
     color: lightColors.foreground.hex,
+    flexShrink: 1,
     fontFamily: theme.typography.fontFamily.display,
     fontSize: 15,
     fontWeight: theme.typography.fontWeight.semibold,
+    includeFontPadding: false,
+    lineHeight: 21,
+    minWidth: 0,
   },
   mutedText: {
     color: lightColors.mutedForeground.hex,
     fontFamily: theme.typography.fontFamily.body,
     fontSize: 12,
+    includeFontPadding: false,
     lineHeight: 17,
   },
   tabList: {
@@ -505,61 +665,89 @@ const styles = StyleSheet.create({
   tabCountTextActive: {
     color: lightColors.primaryForeground.hex,
   },
-  bookingCard: {
-    alignItems: 'stretch',
+  bookingCardSurface: {
     backgroundColor: lightColors.card.hex,
     borderColor: lightColors.border.hex,
     borderRadius: theme.borderRadius.lg,
     borderWidth: theme.borderWidth.hairline,
-    flexDirection: 'column',
-    padding: theme.spacing[4],
+    overflow: 'hidden',
+    width: '100%',
   },
-  pendingCard: {
-    borderColor: lightColors.accent.hex,
+  bookingCardTouch: {
+    width: '100%',
+  },
+  bookingCardContent: {
+    flexDirection: 'column',
+    paddingHorizontal: theme.spacing[5],
+    paddingVertical: theme.spacing[5],
+    width: '100%',
+  },
+  bookingCardContentCompact: {
+    paddingHorizontal: theme.spacing[4],
+    paddingVertical: theme.spacing[4],
   },
   cardColumn: {
-    gap: theme.spacing[3],
+    gap: theme.spacing[5],
   },
   bookingCardHeader: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: theme.spacing[3],
+    minWidth: 0,
   },
   bookingType: {
     color: lightColors.foreground.hex,
+    flexShrink: 1,
     fontFamily: theme.typography.fontFamily.display,
     fontSize: 15,
     fontWeight: theme.typography.fontWeight.semibold,
+    includeFontPadding: false,
+    minWidth: 0,
   },
   metaText: {
     color: lightColors.mutedForeground.hex,
     fontFamily: theme.typography.fontFamily.body,
     fontSize: 11,
+    includeFontPadding: false,
     marginTop: 2,
   },
   detailBox: {
+    alignSelf: 'stretch',
     backgroundColor: lightColors.secondary.hex,
     borderRadius: theme.borderRadius.md,
-    gap: theme.spacing[2],
-    padding: theme.spacing[3],
+    gap: theme.spacing[4],
+    padding: theme.spacing[4],
   },
   detailRow: {
     flexDirection: 'row',
     gap: theme.spacing[3],
     justifyContent: 'space-between',
+    minWidth: 0,
+  },
+  detailRowCompact: {
+    flexDirection: 'column',
+    gap: theme.spacing[1],
   },
   detailLabel: {
     color: lightColors.mutedForeground.hex,
+    flexShrink: 0,
     fontFamily: theme.typography.fontFamily.body,
     fontSize: 12,
+    includeFontPadding: false,
   },
   detailValue: {
     color: lightColors.foreground.hex,
     flex: 1,
+    flexShrink: 1,
     fontFamily: theme.typography.fontFamily.body,
     fontSize: 12,
     fontWeight: theme.typography.fontWeight.medium,
+    includeFontPadding: false,
+    minWidth: 0,
     textAlign: 'right',
+  },
+  detailValueCompact: {
+    textAlign: 'left',
   },
   pendingNotice: {
     backgroundColor: 'rgba(213,228,63,0.16)',
@@ -635,5 +823,14 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
     minWidth: 0,
+  },
+  chevronSlot: {
+    alignItems: 'center',
+    flexShrink: 0,
+    justifyContent: 'center',
+    width: 20,
+  },
+  pressed: {
+    opacity: theme.opacity.pressed,
   },
 });

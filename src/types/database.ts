@@ -273,6 +273,8 @@ export interface Database {
           phone: string | null;
           role: ProfileRole;
           status: ProfileStatus;
+          suspended_until: string | null;
+          no_show_suspension_count: number;
           expo_push_token: string | null;
           created_at: string;
           updated_at: string;
@@ -285,6 +287,8 @@ export interface Database {
           phone?: string | null;
           role?: ProfileRole;
           status?: ProfileStatus;
+          suspended_until?: string | null;
+          no_show_suspension_count?: number;
           expo_push_token?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -297,6 +301,8 @@ export interface Database {
           phone?: string | null;
           role?: ProfileRole;
           status?: ProfileStatus;
+          suspended_until?: string | null;
+          no_show_suspension_count?: number;
           expo_push_token?: string | null;
           created_at?: string;
           updated_at?: string;

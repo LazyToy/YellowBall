@@ -1,6 +1,7 @@
 import React from 'react';
-import { StyleProp, StyleSheet, Text, TextProps, TextStyle } from 'react-native';
+import { StyleProp, StyleSheet, TextProps, TextStyle } from 'react-native';
 
+import { Text } from '@/components/AppText';
 import { sharedTextStyles } from '../constants/componentStyles';
 import { lightColors, theme } from '../constants/theme';
 

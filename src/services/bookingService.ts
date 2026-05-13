@@ -8,6 +8,11 @@ import {
   createNoShowService,
   type NoShowService,
 } from './noShowService';
+import {
+  createDefaultOperationPolicySettings,
+  createOperationPolicyService,
+  type OperationPolicySettings,
+} from './operationPolicyService';
 import type {
   BookingSlot,
   Database,
@@ -30,6 +35,9 @@ import {
 } from '@/utils/cancellationPolicy';
 
 type BookingClient = Pick<SupabaseClient<Database>, 'from' | 'rpc'>;
+type OperationPolicyService = {
+  getSettings: () => Promise<OperationPolicySettings>;
+};
 
 export type CreateBookingInput = {
   userId: string;
@@ -197,11 +205,38 @@ const notifyBookingCreated = async (
   ]);
 };
 
+const assertSlotMeetsLeadTime = (
+  slot: BookingSlot,
+  policy: OperationPolicySettings,
+  now: Date = new Date(),
+) => {
+  const startsAt = new Date(slot.start_time).getTime();
+  const minimumStartAt =
+    now.getTime() + policy.bookingOpenHoursBefore * 60 * 60 * 1000;
+
+  if (Number.isFinite(startsAt) && startsAt < minimumStartAt) {
+    throw new Error(
+      `${policy.bookingOpenHoursBefore}시간 이후 예약만 가능합니다.`,
+    );
+  }
+};
+
+const createDefaultBookingPolicyService = (
+  client: BookingClient,
+): OperationPolicyService =>
+  process.env.NODE_ENV === 'test'
+    ? {
+        getSettings: async () => createDefaultOperationPolicySettings(),
+      }
+    : createOperationPolicyService(client);
+
 export const createBookingService = (
   client: BookingClient,
   notificationService: BookingNotificationService =
     createBookingNotificationService(client),
   noShowService: NoShowService = createNoShowService(client),
+  operationPolicyService: OperationPolicyService =
+    createDefaultBookingPolicyService(client),
 ) => ({
   async createBooking(input: CreateBookingInput): Promise<ServiceBooking> {
     assertValidTension(input.tensionMain, '메인');
@@ -216,7 +251,10 @@ export const createBookingService = (
     await getOwnedRacket(client, input.userId, input.racketId);
     await getActiveString(client, input.mainStringId);
     await getActiveString(client, input.crossStringId);
-    assertSlotAvailable(await getSlot(client, input.slotId));
+    const policy = await operationPolicyService.getSettings();
+    const slot = await getSlot(client, input.slotId);
+    assertSlotAvailable(slot);
+    assertSlotMeetsLeadTime(slot, policy);
 
     const { data, error } = await client.rpc('create_service_booking_transaction', {
       p_user_id: input.userId,
@@ -293,16 +331,21 @@ export const createBookingService = (
       throw new Error('작업 시작 이후에는 예약을 취소할 수 없습니다.');
     }
 
-    const cancellationDeadline = getCancellationDeadline(booking);
+    const policy = await operationPolicyService.getSettings();
+    const freeCancellationHours = policy.stringingRefundHours;
+    const cancellationDeadline = getCancellationDeadline(
+      booking,
+      freeCancellationHours,
+    );
 
-    if (!canCancelFreely(booking)) {
+    if (!canCancelFreely(booking, new Date(), freeCancellationHours)) {
       const { error } = await client.from('booking_status_logs').insert({
         booking_type: 'service',
         booking_id: bookingId,
         previous_status: booking.status,
         new_status: 'cancel_requested',
         changed_by: userId,
-        reason: '사용자 취소 요청 - 24시간 이내 관리자 확인 필요',
+        reason: `사용자 취소 요청 - ${freeCancellationHours}시간 이내 관리자 확인 필요`,
       });
 
       if (error) {
@@ -311,7 +354,7 @@ export const createBookingService = (
 
       await notificationService.notifyAdmins({
         title: '예약 취소 요청',
-        body: '24시간 이내 예약 취소 요청이 등록되었습니다.',
+        body: `${freeCancellationHours}시간 이내 예약 취소 요청이 등록되었습니다.`,
         notificationType: 'admin_booking_cancel_requested',
         data: {
           bookingId,

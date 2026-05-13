@@ -1,18 +1,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { Button } from '@/components/Button';
+import { Text } from '@/components/AppText';
 import { Input } from '@/components/Input';
-import { RefreshableScrollView } from '@/components/PageRefresh';
+import { AppScrollView } from '@/components/MobileUI';
 import { Typography } from '@/components/Typography';
 import { lightColors, theme } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
@@ -133,15 +131,7 @@ export default function LoginScreen() {
   const brandLogoSource = brandLogoUrl ? { uri: brandLogoUrl } : null;
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.keyboardView}
-    >
-      <RefreshableScrollView
-        contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
+    <AppScrollView contentContainerStyle={styles.container}>
         <View style={styles.topBar}>
           <View style={styles.brandMark}>
             {brandLogoSource ? (
@@ -229,15 +219,28 @@ export default function LoginScreen() {
             </Typography>
           ) : null}
 
-          <Button
+          <Pressable
             accessibilityLabel="로그인"
+            accessibilityRole="button"
+            accessibilityState={{ disabled: isBusy, busy: isSubmitting }}
             disabled={isBusy}
-            loading={isSubmitting}
             onPress={handleSubmit}
-            size="lg"
+            style={[
+              styles.authButton,
+              styles.nativeAuthButton,
+              isBusy ? styles.nativeAuthButtonDisabled : null,
+            ]}
           >
+            {isSubmitting ? (
+              <ActivityIndicator
+                color={lightColors.primaryForeground.hex}
+                size="small"
+              />
+            ) : null}
+            <Text style={styles.nativeAuthButtonText}>
             로그인
-          </Button>
+            </Text>
+          </Pressable>
 
           <View style={styles.dividerRow}>
             <View style={styles.divider} />
@@ -247,26 +250,24 @@ export default function LoginScreen() {
             <View style={styles.divider} />
           </View>
 
-          <Button
+          <SocialLoginButton
             accessibilityLabel="Google로 로그인"
             disabled={isBusy}
             loading={socialProvider === 'google'}
             onPress={() => handleSocialSignIn('google')}
-            size="lg"
-            variant="outline"
-          >
-            Google로 계속하기
-          </Button>
-          <Button
-            accessibilityLabel="카카오로 로그인"
+            provider="google"
+            testID="google-social-login-button"
+            title="Google로 계속하기"
+          />
+          <SocialLoginButton
+            accessibilityLabel="카카오톡으로 로그인"
             disabled={isBusy}
             loading={socialProvider === 'kakao'}
             onPress={() => handleSocialSignIn('kakao')}
-            size="lg"
-            variant="secondary"
-          >
-            카카오로 계속하기
-          </Button>
+            provider="kakao"
+            testID="kakao-social-login-button"
+            title="카카오톡으로 계속하기"
+          />
 
           <View style={styles.registerRow}>
             <Typography variant="caption" style={styles.registerCaption}>
@@ -283,16 +284,86 @@ export default function LoginScreen() {
             </Pressable>
           </View>
         </View>
-      </RefreshableScrollView>
-    </KeyboardAvoidingView>
+    </AppScrollView>
+  );
+}
+
+function SocialLoginButton({
+  accessibilityLabel,
+  disabled,
+  loading,
+  onPress,
+  provider,
+  testID,
+  title,
+}: {
+  accessibilityLabel: string;
+  disabled: boolean;
+  loading: boolean;
+  onPress: () => void;
+  provider: 'google' | 'kakao';
+  testID: string;
+  title: string;
+}) {
+  const isGoogle = provider === 'google';
+
+  return (
+    <View
+      style={[
+        styles.socialButtonOuter,
+        isGoogle ? styles.googleButton : styles.kakaoButton,
+        disabled ? styles.nativeAuthButtonDisabled : null,
+      ]}
+      testID={isGoogle ? 'google-social-login-surface' : 'kakao-social-login-surface'}
+    >
+      <Pressable
+        accessibilityLabel={accessibilityLabel}
+        accessibilityRole="button"
+        accessibilityState={{ disabled, busy: loading }}
+        android_ripple={{ color: 'rgba(0,0,0,0.08)', borderless: false }}
+        disabled={disabled}
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.socialButtonPressable,
+          pressed ? styles.pressed : null,
+        ]}
+        testID={testID}
+      >
+        {/* Android에서 Pressable의 flexDirection이 무시되므로 View로 레이아웃 처리 */}
+        <View style={styles.socialButtonRow}>
+          <View style={styles.socialIconSlot}>
+            <View
+              style={[styles.socialIcon, isGoogle ? styles.googleIcon : styles.kakaoIcon]}
+            >
+              <Text style={isGoogle ? styles.googleIconText : styles.kakaoIconText}>
+                {isGoogle ? 'G' : 'K'}
+              </Text>
+            </View>
+          </View>
+          <Text
+            adjustsFontSizeToFit
+            minimumFontScale={0.86}
+            numberOfLines={1}
+            style={isGoogle ? styles.googleButtonText : styles.kakaoButtonText}
+            testID={isGoogle ? 'google-social-login-label' : 'kakao-social-login-label'}
+          >
+            {title}
+          </Text>
+          <View style={styles.socialSpinnerSlot}>
+            {loading ? (
+              <ActivityIndicator
+                color={isGoogle ? lightColors.foreground.hex : '#000000'}
+                size="small"
+              />
+            ) : null}
+          </View>
+        </View>
+      </Pressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  keyboardView: {
-    backgroundColor: lightColors.background.hex,
-    flex: 1,
-  },
   container: {
     backgroundColor: lightColors.background.hex,
     flexGrow: 1,
@@ -397,6 +468,130 @@ const styles = StyleSheet.create({
     gap: theme.spacing[3],
     padding: theme.spacing[4],
   },
+  authButton: {
+    width: '100%',
+  },
+  nativeAuthButton: {
+    alignItems: 'center',
+    backgroundColor: lightColors.primary.hex,
+    borderColor: lightColors.primary.hex,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth.hairline,
+    elevation: 0,
+    flexDirection: 'row',
+    gap: theme.spacing[2],
+    height: 48,
+    justifyContent: 'center',
+    minHeight: 48,
+    overflow: 'hidden',
+    zIndex: 1,
+  },
+  nativeAuthButtonDisabled: {
+    opacity: theme.opacity.disabled,
+  },
+  nativeAuthButtonText: {
+    color: lightColors.primaryForeground.hex,
+    fontFamily: theme.typography.fontFamily.body,
+    fontSize: 16,
+    fontWeight: theme.typography.fontWeight.semibold,
+    lineHeight: 20,
+  },
+  socialButtonOuter: {
+    borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth.hairline,
+    height: 48,
+    minHeight: 48,
+    overflow: 'hidden',
+    width: '100%',
+    zIndex: 1,
+  },
+  socialButtonPressable: {
+    flex: 1,
+    height: '100%',
+    justifyContent: 'center',
+    minHeight: 48,
+    overflow: 'hidden',
+    position: 'relative',
+    width: '100%',
+  },
+  socialButtonRow: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    height: '100%',
+    minHeight: 48,
+    paddingHorizontal: theme.spacing[3],
+    width: '100%',
+  },
+  googleButton: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#DADCE0',
+  },
+  kakaoButton: {
+    backgroundColor: '#FEE500',
+    borderColor: '#FEE500',
+  },
+  socialIconSlot: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 32,
+  },
+  socialIcon: {
+    alignItems: 'center',
+    borderRadius: 6,
+    height: 28,
+    justifyContent: 'center',
+    width: 28,
+  },
+  googleIcon: {
+    backgroundColor: '#FFFFFF',
+  },
+  kakaoIcon: {
+    backgroundColor: '#000000',
+  },
+  googleIconText: {
+    color: '#4285F4',
+    fontFamily: theme.typography.fontFamily.body,
+    fontSize: 18,
+    fontWeight: theme.typography.fontWeight.bold,
+    includeFontPadding: false,
+    lineHeight: 22,
+  },
+  kakaoIconText: {
+    color: '#FEE500',
+    fontFamily: theme.typography.fontFamily.body,
+    fontSize: 14,
+    fontWeight: theme.typography.fontWeight.bold,
+    includeFontPadding: false,
+    lineHeight: 18,
+  },
+  googleButtonText: {
+    color: '#3C4043',
+    flex: 1,
+    fontFamily: theme.typography.fontFamily.body,
+    fontSize: 15,
+    fontWeight: theme.typography.fontWeight.semibold,
+    includeFontPadding: false,
+    lineHeight: 20,
+    maxWidth: '76%',
+    textAlign: 'center',
+  },
+  kakaoButtonText: {
+    color: '#000000',
+    flex: 1,
+    fontFamily: theme.typography.fontFamily.body,
+    fontSize: 15,
+    fontWeight: theme.typography.fontWeight.semibold,
+    includeFontPadding: false,
+    lineHeight: 20,
+    maxWidth: '76%',
+    textAlign: 'center',
+  },
+  socialSpinnerSlot: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 32,
+  },
   formHeader: {
     gap: theme.spacing[1],
     marginBottom: theme.spacing[1],
@@ -444,5 +639,8 @@ const styles = StyleSheet.create({
   registerLinkText: {
     color: lightColors.primary.hex,
     fontWeight: theme.typography.fontWeight.semibold,
+  },
+  pressed: {
+    opacity: theme.opacity.pressed,
   },
 });

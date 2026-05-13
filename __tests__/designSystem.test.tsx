@@ -1,11 +1,13 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 
 import { Badge } from '../src/components/Badge';
 import { Button } from '../src/components/Button';
 import { Card } from '../src/components/Card';
 import { Input } from '../src/components/Input';
 import { LoadingSpinner } from '../src/components/LoadingSpinner';
+import { NotificationOptInDialog } from '../src/components/NotificationOptInDialog';
 import { Tabs } from '../src/components/Tabs';
 import { Typography } from '../src/components/Typography';
 import { theme } from '../src/constants/theme';
@@ -56,6 +58,92 @@ describe('Button', () => {
 
     expect(enabledPress).toHaveBeenCalledTimes(1);
     expect(disabledPress).not.toHaveBeenCalled();
+  });
+
+  test('Android에서 버튼 표면과 내부 콘텐츠 row를 안정적으로 고정한다', () => {
+    const { getByTestId, getByText } = render(
+      <Button testID="stable-android-button">예약 접수</Button>,
+    );
+
+    const surface = getByTestId('stable-android-button-surface');
+    const surfaceStyle = StyleSheet.flatten(surface.props.style);
+    const button = getByTestId('stable-android-button');
+    const rawButtonStyle =
+      typeof button.props.style === 'function'
+        ? button.props.style({ pressed: false })
+        : button.props.style;
+    const buttonStyle = StyleSheet.flatten(
+      rawButtonStyle,
+    );
+
+    expect(surfaceStyle).toEqual(
+      expect.objectContaining({
+        alignSelf: 'stretch',
+        backgroundColor: theme.colors.light.primary.hex,
+        borderColor: theme.colors.light.primary.hex,
+        minWidth: 0,
+        overflow: 'hidden',
+        position: 'relative',
+      }),
+    );
+    expect(buttonStyle).toEqual(
+      expect.objectContaining({
+        alignSelf: 'stretch',
+        justifyContent: 'center',
+        minHeight: theme.controlHeights.md,
+        minWidth: 0,
+      }),
+    );
+
+    const content = getByTestId('stable-android-button-content');
+    const contentStyle = StyleSheet.flatten(content.props.style);
+
+    expect(content.props.pointerEvents).toBe('none');
+    expect(contentStyle).toEqual(
+      expect.objectContaining({
+        alignItems: 'center',
+        alignSelf: 'stretch',
+        flexDirection: 'row',
+        justifyContent: 'center',
+        minHeight: theme.controlHeights.md,
+        minWidth: 0,
+      }),
+    );
+    expect(contentStyle.height).toBeUndefined();
+
+    expect(getByText('예약 접수').props).toEqual(
+      expect.objectContaining({
+        adjustsFontSizeToFit: true,
+        numberOfLines: 1,
+      }),
+    );
+  });
+});
+
+describe('NotificationOptInDialog', () => {
+  test('알림 허용 CTA는 공통 Button의 안정적인 Android 표면을 사용한다', () => {
+    const { getByTestId } = render(
+      <NotificationOptInDialog
+        visible
+        onAllow={jest.fn()}
+        onDismiss={jest.fn()}
+      />,
+    );
+
+    const allowButtonSurface = getByTestId(
+      'notification-opt-in-allow-button-surface',
+    );
+    const allowButtonStyle = StyleSheet.flatten(allowButtonSurface.props.style);
+
+    expect(allowButtonStyle).toEqual(
+      expect.objectContaining({
+        alignSelf: 'stretch',
+        backgroundColor: theme.colors.light.primary.hex,
+        borderColor: theme.colors.light.primary.hex,
+        overflow: 'hidden',
+      }),
+    );
+    expect(getByTestId('notification-opt-in-allow-button-content')).toBeTruthy();
   });
 });
 

@@ -1,4 +1,5 @@
 import { createAuthService } from '../src/services/authService';
+import { createDefaultOperationPolicySettings } from '../src/services/operationPolicyService';
 
 const activeProfile = {
   id: 'user-1',
@@ -98,6 +99,21 @@ describe('authService', () => {
     await expect(
       service.signUp('user@example.com', 'Yellow1!', 'yellow_01', '옐로볼'),
     ).rejects.toThrow('이미 가입된 이메일입니다.');
+  });
+
+  test('signup trigger 저장 오류는 이메일 또는 아이디 중복 가능성을 안내한다', async () => {
+    const signUp = jest.fn().mockResolvedValue({
+      data: { user: null, session: null },
+      error: { message: 'Database error saving new user' },
+    });
+    const service = createAuthService({
+      auth: { signUp },
+      functions: { invoke: jest.fn() },
+    } as never);
+
+    await expect(
+      service.signUp('user@example.com', 'Yellow1!', 'yellow_01', '옐로볼'),
+    ).rejects.toThrow('이미 사용 중인 이메일 또는 아이디입니다.');
   });
 
   test('signIn은 이메일과 비밀번호로 로그인하고 프로필 상태를 확인한다', async () => {
@@ -274,6 +290,47 @@ describe('authService', () => {
       error: expect.any(Error),
     });
     expect(signOut).toHaveBeenCalledTimes(1);
+  });
+
+  test('suspended 로그인 차단 정책이 꺼져 있으면 로그인 세션을 유지한다', async () => {
+    const signOut = jest.fn().mockResolvedValue({ error: null });
+    const query = createProfilesQuery({
+      ...activeProfile,
+      status: 'suspended',
+    });
+    const session = { user: { id: 'user-1' } };
+    const service = createAuthService(
+      {
+        auth: {
+          signUp: jest.fn(),
+          signInWithPassword: jest.fn().mockResolvedValue({
+            data: {
+              user: { id: 'user-1' },
+              session,
+            },
+            error: null,
+          }),
+          signOut,
+        },
+        functions: { invoke: jest.fn() },
+        from: query.from,
+      } as never,
+      undefined,
+      {},
+      {
+        getSettings: jest.fn().mockResolvedValue({
+          ...createDefaultOperationPolicySettings(),
+          suspendedLoginBlocked: false,
+        }),
+      },
+    );
+
+    await expect(service.signIn('user@example.com', 'Yellow1!')).resolves.toEqual({
+      session,
+      user: { id: 'user-1' },
+      error: null,
+    });
+    expect(signOut).not.toHaveBeenCalled();
   });
 
   test('deleted_pending 사용자는 로그인 차단 오류를 반환한다', async () => {

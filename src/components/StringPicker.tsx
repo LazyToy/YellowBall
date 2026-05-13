@@ -4,11 +4,10 @@ import {
   Modal,
   Pressable,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from 'react-native';
 
+import { Text, TextInput } from '@/components/AppText';
 import { lightColors, theme } from '@/constants/theme';
 import type { StringCatalogItem } from '@/types/database';
 

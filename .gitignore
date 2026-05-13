@@ -32,6 +32,7 @@ expo-env.d.ts
 # Native credentials and generated files
 .kotlin/
 *.orig.*
+*.apk
 *.jks
 *.p8
 *.p12
@@ -63,6 +64,15 @@ supabase/functions/node_modules/
 
 # Local tools
 .omc/
+
+# Local verification artifacts
+/tmp_apk_inspect_*/
+/tmp_device_screens_*/
+/device_screen*.png
+/device_screenshot_*.png
+/yellowball*.png
+/yellowball*.xml
+/*.zip
 
 # IDE and editor
 .idea/

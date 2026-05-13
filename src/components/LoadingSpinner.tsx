@@ -3,12 +3,12 @@ import {
   ActivityIndicator,
   StyleProp,
   StyleSheet,
-  Text,
   View,
   ViewProps,
   ViewStyle,
 } from 'react-native';
 
+import { Text } from '@/components/AppText';
 import { sharedTextStyles } from '../constants/componentStyles';
 import { lightColors, theme } from '../constants/theme';
 

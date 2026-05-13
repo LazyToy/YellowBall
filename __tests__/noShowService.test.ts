@@ -33,6 +33,19 @@ const countQuery = (count: number) => {
   return query;
 };
 
+const profileQuery = (noShowSuspensionCount: number) => {
+  const query = {
+    select: jest.fn(() => query),
+    eq: jest.fn(() => query),
+    maybeSingle: jest.fn().mockResolvedValue({
+      data: { no_show_suspension_count: noShowSuspensionCount },
+      error: null,
+    }),
+  };
+
+  return query;
+};
+
 describe('noShowService', () => {
   test('recordNoShow는 RPC로 노쇼 상태와 counted 플래그를 기록한다', async () => {
     const rpc = jest.fn().mockResolvedValue({ data: booking, error: null });
@@ -49,12 +62,26 @@ describe('noShowService', () => {
   });
 
   test('no_show_counted=true인 예약만 제한 횟수에 포함한다', async () => {
-    const from = jest.fn().mockReturnValue(countQuery(3));
+    const from = jest
+      .fn()
+      .mockReturnValueOnce(countQuery(3))
+      .mockReturnValueOnce(countQuery(3))
+      .mockReturnValueOnce(profileQuery(0));
     const service = createNoShowService({ from, rpc: jest.fn() } as never);
 
     await expect(service.getNoShowCount('user-1')).resolves.toBe(3);
     await expect(service.isBookingRestricted('user-1')).resolves.toBe(true);
 
     expect(from).toHaveBeenCalledWith('service_bookings');
+  });
+
+  test('served no-show suspension count no longer restricts booking after release', async () => {
+    const from = jest
+      .fn()
+      .mockReturnValueOnce(countQuery(3))
+      .mockReturnValueOnce(profileQuery(3));
+    const service = createNoShowService({ from, rpc: jest.fn() } as never);
+
+    await expect(service.isBookingRestricted('user-1')).resolves.toBe(false);
   });
 });

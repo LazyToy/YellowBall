@@ -1,22 +1,38 @@
-import React from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import {
-  Image,
+  ImageBackground,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   PressableProps,
   ScrollView,
   ScrollViewProps,
   StyleProp,
   StyleSheet,
-  Text,
+  TextInput as NativeTextInput,
   TextStyle,
   View,
   ViewStyle,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
 import { usePageRefreshControl } from '@/components/PageRefresh';
 import { lightColors, theme } from '@/constants/theme';
 
 type Tone = 'primary' | 'accent' | 'secondary' | 'card';
+const bottomTabClearance = 110;
+const focusedInputTopPadding = 96;
+const keyboardVerticalOffset = 0;
+const keyboardScrollDelayMs = 80;
+
+type MeasurableInput = {
+  measureLayout: (
+    relativeToNativeNode: unknown,
+    onSuccess: (x: number, y: number, width: number, height: number) => void,
+    onFail?: () => void,
+  ) => void;
+};
 
 const iconByGlyph: Record<string, AppIconName> = {
   A: 'map-pin',
@@ -38,67 +54,103 @@ export function AppScrollView({
   alwaysBounceVertical = true,
   children,
   contentContainerStyle,
+  keyboardDismissMode,
+  keyboardShouldPersistTaps,
   refreshControl,
   ...scrollViewProps
 }: ScrollViewProps) {
   const pageRefreshControl = usePageRefreshControl();
+  const scrollViewRef = useRef<ScrollView>(null);
+
+  const scrollToFocusedInput = useCallback(() => {
+    const scrollView = scrollViewRef.current;
+    const focusedInput = NativeTextInput.State.currentlyFocusedInput?.() as
+      | MeasurableInput
+      | null
+      | undefined;
+    const nativeScrollRef = scrollView?.getNativeScrollRef();
+
+    if (!scrollView || !focusedInput || !nativeScrollRef) {
+      return;
+    }
+
+    focusedInput.measureLayout(
+      nativeScrollRef,
+      (_x, y) => {
+        scrollView.scrollTo({
+          animated: true,
+          y: Math.max(0, y - focusedInputTopPadding),
+        });
+      },
+      () => undefined,
+    );
+  }, []);
+
+  useEffect(() => {
+    const keyboardShowSubscription = Keyboard.addListener('keyboardDidShow', () => {
+      setTimeout(scrollToFocusedInput, keyboardScrollDelayMs);
+    });
+    const keyboardFrameSubscription = Keyboard.addListener(
+      'keyboardDidChangeFrame',
+      () => {
+        setTimeout(scrollToFocusedInput, keyboardScrollDelayMs);
+      },
+    );
+
+    return () => {
+      keyboardShowSubscription.remove();
+      keyboardFrameSubscription.remove();
+    };
+  }, [scrollToFocusedInput]);
 
   return (
-    <ScrollView
-      alwaysBounceVertical={alwaysBounceVertical}
-      showsVerticalScrollIndicator={false}
-      style={styles.screen}
-      contentContainerStyle={[styles.scrollContent, contentContainerStyle]}
-      refreshControl={refreshControl ?? pageRefreshControl}
-      {...scrollViewProps}
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={keyboardVerticalOffset}
+      style={styles.keyboardAvoidingView}
     >
-      {children}
-    </ScrollView>
+      <ScrollView
+        ref={scrollViewRef}
+        alwaysBounceVertical={alwaysBounceVertical}
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode={keyboardDismissMode ?? 'interactive'}
+        keyboardShouldPersistTaps={keyboardShouldPersistTaps ?? 'handled'}
+        showsVerticalScrollIndicator={false}
+        style={styles.screen}
+        contentContainerStyle={[styles.scrollContent, contentContainerStyle]}
+        onContentSizeChange={scrollToFocusedInput}
+        refreshControl={refreshControl ?? pageRefreshControl}
+        {...scrollViewProps}
+      >
+        {children}
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 export function TopBar({
-  nickname,
-  storeName,
   onNotificationsPress,
 }: {
   nickname?: string | null;
   storeName?: string | null;
   onNotificationsPress?: () => void;
 }) {
-  const initial = (nickname ?? 'Y').slice(0, 1).toUpperCase();
-  /** 표시할 매장명 — prop이 없으면 'YellowBall' 기본값 */
-  const displayStore = storeName || 'YellowBall';
-
   return (
     <View style={styles.topBar}>
-      <View style={styles.brandRow}>
-        <View style={styles.brandMark}>
-          <Text style={styles.brandMarkText}>Y</Text>
-        </View>
-        <View style={styles.flex}>
-          {/* DB에서 로드한 매장명 표시 */}
-          <Text style={styles.locationText}>{displayStore}</Text>
-          <Text style={styles.brandText}>YellowBall</Text>
-        </View>
-      </View>
       <View style={styles.topActions}>
         <Pressable
           accessibilityLabel="알림"
           accessibilityRole="button"
           onPress={onNotificationsPress}
           style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}
+          testID="topbar-notification-button"
         >
           <AppIcon
             color={lightColors.secondaryForeground.hex}
             name="bell"
             size={18}
           />
-          <View style={styles.notificationDot} />
         </Pressable>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{initial}</Text>
-        </View>
       </View>
     </View>
   );
@@ -207,19 +259,27 @@ export function IconAction({
   sub,
   tone,
   onPress,
+  style,
 }: {
   glyph: string;
   label: string;
   sub: string;
   tone: Tone;
   onPress?: () => void;
+  style?: StyleProp<ViewStyle>;
 }) {
+  const flattenedStyle = StyleSheet.flatten(style);
+
   return (
     <Pressable
       accessibilityLabel={label}
       accessibilityRole="button"
       onPress={onPress}
-      style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.iconAction,
+        flattenedStyle,
+        pressed && styles.pressed,
+      ]}
     >
       <GlyphBubble glyph={glyph} tone={tone} size={52} />
       <Text numberOfLines={1} style={styles.iconActionLabel}>
@@ -236,29 +296,42 @@ export function Card({
   children,
   style,
   elevated = false,
+  testID,
 }: {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   elevated?: boolean;
+  testID?: string;
 }) {
-  return <View style={[styles.card, elevated && theme.shadow.card, style]}>{children}</View>;
+  return (
+    <View
+      testID={testID}
+      style={[styles.card, elevated && theme.shadow.card, StyleSheet.flatten(style)]}
+    >
+      {children}
+    </View>
+  );
 }
 
 export function RowButton({
   children,
-  onPress,
   style,
-  accessibilityLabel,
-}: PressableProps & {
+  ...pressableProps
+}: Omit<PressableProps, 'children' | 'style'> & {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
 }) {
+  const flattenedStyle = StyleSheet.flatten(style);
+
   return (
     <Pressable
-      accessibilityLabel={accessibilityLabel}
       accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => [styles.rowButton, pressed && styles.pressed, style]}
+      style={({ pressed }) => [
+        styles.rowButton,
+        flattenedStyle,
+        pressed && styles.pressed,
+      ]}
+      {...pressableProps}
     >
       {children}
     </Pressable>
@@ -297,15 +370,15 @@ export function ProductThumb({
   return (
     <View style={[styles.productThumb, wide && styles.productThumbWide, thumbToneStyles[tone]]}>
       {imageUrl ? (
-        <>
-          <Image
-            accessibilityIgnoresInvertColors
-            resizeMode="cover"
-            source={{ uri: imageUrl }}
-            style={styles.productThumbImage}
-          />
+        <ImageBackground
+          accessibilityIgnoresInvertColors
+          imageStyle={styles.productThumbImageInner}
+          resizeMode="cover"
+          source={{ uri: imageUrl }}
+          style={styles.productThumbImage}
+        >
           <View style={styles.productThumbOverlay} />
-        </>
+        </ImageBackground>
       ) : (
         <>
           <View style={styles.racketHandle} />
@@ -334,50 +407,22 @@ const styles = StyleSheet.create({
     backgroundColor: lightColors.background.hex,
     flex: 1,
   },
+  keyboardAvoidingView: {
+    flex: 1,
+  },
   scrollContent: {
+    alignSelf: 'stretch',
     gap: theme.spacing[4],
-    paddingBottom: theme.spacing[8],
+    paddingBottom: bottomTabClearance,
+    width: '100%',
   },
   topBar: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: theme.spacing[3],
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     paddingHorizontal: theme.spacing[5],
     paddingTop: theme.spacing[5],
-  },
-  brandRow: {
-    alignItems: 'center',
-    flex: 1,
-    flexDirection: 'row',
-    gap: theme.spacing[2],
-  },
-  brandMark: {
-    alignItems: 'center',
-    backgroundColor: lightColors.primary.hex,
-    borderRadius: 999,
-    height: 36,
-    justifyContent: 'center',
-    width: 36,
-  },
-  brandMarkText: {
-    color: lightColors.primaryForeground.hex,
-    fontFamily: theme.typography.fontFamily.display,
-    fontSize: 16,
-    fontWeight: theme.typography.fontWeight.bold,
-  },
-  locationText: {
-    color: lightColors.mutedForeground.hex,
-    fontFamily: theme.typography.fontFamily.body,
-    fontSize: 11,
-    lineHeight: 15,
-  },
-  brandText: {
-    color: lightColors.foreground.hex,
-    fontFamily: theme.typography.fontFamily.display,
-    fontSize: 14,
-    fontWeight: theme.typography.fontWeight.semibold,
-    lineHeight: 18,
   },
   topActions: {
     alignItems: 'center',
@@ -386,43 +431,17 @@ const styles = StyleSheet.create({
   },
   roundButton: {
     alignItems: 'center',
-    backgroundColor: lightColors.secondary.hex,
+    backgroundColor: 'transparent',
     borderRadius: 999,
     height: 40,
     justifyContent: 'center',
+    marginTop: theme.spacing[2],
     width: 40,
   },
   actionGlyph: {
     color: lightColors.secondaryForeground.hex,
     fontFamily: theme.typography.fontFamily.display,
     fontSize: 16,
-    fontWeight: theme.typography.fontWeight.bold,
-  },
-  notificationDot: {
-    backgroundColor: lightColors.destructive.hex,
-    borderColor: lightColors.background.hex,
-    borderRadius: 999,
-    borderWidth: 2,
-    height: 10,
-    position: 'absolute',
-    right: 9,
-    top: 9,
-    width: 10,
-  },
-  avatar: {
-    alignItems: 'center',
-    backgroundColor: lightColors.accent.hex,
-    borderColor: lightColors.border.hex,
-    borderRadius: 999,
-    borderWidth: theme.borderWidth.hairline,
-    height: 40,
-    justifyContent: 'center',
-    width: 40,
-  },
-  avatarText: {
-    color: lightColors.accentForeground.hex,
-    fontFamily: theme.typography.fontFamily.display,
-    fontSize: 14,
     fontWeight: theme.typography.fontWeight.bold,
   },
   pageHeader: {
@@ -496,7 +515,6 @@ const styles = StyleSheet.create({
   },
   iconAction: {
     alignItems: 'center',
-    flex: 1,
     gap: 2,
     minWidth: 0,
   },
@@ -523,7 +541,9 @@ const styles = StyleSheet.create({
   },
   rowButton: {
     alignItems: 'center',
+    alignSelf: 'stretch',
     flexDirection: 'row',
+    width: '100%',
   },
   pill: {
     alignSelf: 'flex-start',
@@ -542,16 +562,17 @@ const styles = StyleSheet.create({
     borderRadius: theme.borderRadius.lg,
     overflow: 'hidden',
     padding: theme.spacing[2],
+    width: '100%',
   },
   productThumbWide: {
     aspectRatio: 4 / 3,
   },
   productThumbImage: {
-    height: '100%',
-    left: 0,
-    position: 'absolute',
-    top: 0,
-    width: '100%',
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
+  },
+  productThumbImageInner: {
+    borderRadius: theme.borderRadius.lg,
   },
   productThumbOverlay: {
     backgroundColor: 'rgba(16,60,40,0.26)',

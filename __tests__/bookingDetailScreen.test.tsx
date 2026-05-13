@@ -101,16 +101,38 @@ describe('BookingDetailScreen', () => {
         start_time: '2099-05-04T09:00:00.000Z',
       },
     };
-    mockGetBookingDetail
-      .mockResolvedValueOnce(futureBooking)
-      .mockResolvedValueOnce({ ...futureBooking, status: 'cancelled_user' });
+    mockGetBookingDetail.mockResolvedValue(futureBooking);
+    const BookingDetailScreen = require('../app/(tabs)/booking-detail').default;
+    const screen = render(<BookingDetailScreen />);
+
+    await waitFor(() => expect(screen.getByText('예약 취소')).toBeTruthy());
+    fireEvent.press(screen.getByText('예약 취소'));
+    fireEvent.press(screen.getAllByLabelText('예약 취소')[0]);
+
+    await waitFor(() => expect(mockCancelBooking).toHaveBeenCalledWith('booking-1', 'user-1'));
+    await waitFor(() =>
+      expect(mockGetBookingDetail.mock.calls.length).toBeGreaterThanOrEqual(2),
+    );
+  });
+
+  test('예약 취소는 확인창을 거쳐 성공 알림창을 표시한다', async () => {
+    const futureBooking = {
+      ...booking,
+      booking_slots: {
+        ...booking.booking_slots,
+        start_time: '2099-05-04T09:00:00.000Z',
+      },
+    };
+    mockGetBookingDetail.mockResolvedValue(futureBooking);
     const BookingDetailScreen = require('../app/(tabs)/booking-detail').default;
     const screen = render(<BookingDetailScreen />);
 
     await waitFor(() => expect(screen.getByText('예약 취소')).toBeTruthy());
     fireEvent.press(screen.getByText('예약 취소'));
 
-    await waitFor(() => expect(mockCancelBooking).toHaveBeenCalledWith('booking-1', 'user-1'));
-    await waitFor(() => expect(mockGetBookingDetail).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('예약을 취소할까요?')).toBeTruthy();
+    fireEvent.press(screen.getAllByLabelText('예약 취소')[0]);
+
+    await waitFor(() => expect(screen.getByText('예약을 취소했습니다')).toBeTruthy());
   });
 });

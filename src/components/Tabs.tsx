@@ -3,13 +3,13 @@ import {
   Pressable,
   StyleProp,
   StyleSheet,
-  Text,
   TextStyle,
   View,
   ViewProps,
   ViewStyle,
 } from 'react-native';
 
+import { Text } from '@/components/AppText';
 import { sharedControlStyles, sharedTextStyles } from '../constants/componentStyles';
 import { lightColors, theme } from '../constants/theme';
 

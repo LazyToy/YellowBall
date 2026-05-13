@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
+import { Text } from '@/components/AppText';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { BackButton, Pill } from '@/components/MobileUI';
 import { RefreshableScrollView } from '@/components/PageRefresh';

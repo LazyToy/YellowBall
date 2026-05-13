@@ -1,4 +1,5 @@
 import { createSlotService } from '../src/services/slotService';
+import { createDefaultOperationPolicySettings } from '../src/services/operationPolicyService';
 
 const slot = {
   id: 'slot-1',
@@ -12,6 +13,14 @@ const slot = {
   created_at: '2026-05-03T00:00:00.000Z',
   updated_at: '2026-05-03T00:00:00.000Z',
 };
+
+const operationPolicyService = (overrides = {}) => ({
+  getSettings: jest.fn().mockResolvedValue({
+    ...createDefaultOperationPolicySettings(),
+    bookingOpenHoursBefore: 0,
+    ...overrides,
+  }),
+});
 
 const superAdminRoleQuery = () => {
   const single = jest
@@ -155,7 +164,10 @@ describe('slotService', () => {
       .fn()
       .mockReturnValueOnce(scheduleQuery({ openTime: '10:00:00', closeTime: '12:00:00' }))
       .mockReturnValueOnce(query);
-    const service = createSlotService({ from, rpc } as never);
+    const service = createSlotService(
+      { from, rpc } as never,
+      operationPolicyService(),
+    );
 
     await expect(service.getAvailableSlots('2099-05-04', 'stringing')).resolves.toEqual([
       withinHoursSlot,
@@ -171,6 +183,34 @@ describe('slotService', () => {
     expect(query.eq).toHaveBeenCalledWith('is_blocked', false);
     expect(query.gte).toHaveBeenCalledWith('start_time', '2099-05-03T15:00:00.000Z');
     expect(query.lt).toHaveBeenCalledWith('start_time', '2099-05-04T15:00:00.000Z');
+  });
+
+  test('getAvailableSlots uses DB policy capacity when preparing slots', async () => {
+    const query = {
+      select: jest.fn(() => query),
+      eq: jest.fn(() => query),
+      gte: jest.fn(() => query),
+      lt: jest.fn(() => query),
+      order: jest.fn().mockResolvedValue({ data: [], error: null }),
+    };
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
+    const from = jest
+      .fn()
+      .mockReturnValueOnce(scheduleQuery())
+      .mockReturnValueOnce(query);
+    const service = createSlotService(
+      { from, rpc } as never,
+      operationPolicyService({ maxConcurrentBookings: 3 }),
+    );
+
+    await expect(service.getAvailableSlots('2099-05-04', 'stringing')).resolves.toEqual([]);
+
+    expect(rpc).toHaveBeenCalledWith('ensure_booking_slots_for_date', {
+      p_date: '2099-05-04',
+      p_service_type: 'stringing',
+      p_duration_min: 60,
+      p_capacity: 3,
+    });
   });
 
   test('getSlots returns blocked and open slots for admin slot management', async () => {
@@ -240,7 +280,10 @@ describe('slotService', () => {
       .mockReturnValueOnce(closedDateQuery(false))
       .mockReturnValueOnce(scheduleQuery({ openTime: '09:00:00', closeTime: '12:00:00' }))
       .mockReturnValueOnce(query);
-    const service = createSlotService({ from, rpc } as never);
+    const service = createSlotService(
+      { from, rpc } as never,
+      operationPolicyService(),
+    );
 
     await expect(service.getBookingSlotsForDate('2099-05-04', 'stringing')).resolves.toEqual([
       availableSlot,
