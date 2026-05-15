@@ -3,7 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/Button';
-import { ConfirmDialog, FeedbackDialog } from '@/components/FeedbackDialog';
+import { FeedbackDialog } from '@/components/FeedbackDialog';
 import { Input } from '@/components/Input';
 import { PhotoPicker } from '@/components/PhotoPicker';
 import { RefreshableScrollView } from '@/components/PageRefresh';
@@ -15,9 +15,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useResetOnBlur } from '@/hooks/useResetOnBlur';
 import {
   addRacket,
-  deleteRacket,
   getRackets,
-  setPrimaryRacket,
   updateRacket,
 } from '@/services/racketService';
 import { getActiveStrings } from '@/services/stringCatalogService';
@@ -66,8 +64,6 @@ export default function RacketsScreen() {
     title: string;
     message?: string;
   } | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<UserRacket | null>(null);
-  const [selectedDetail, setSelectedDetail] = useState<UserRacket | null>(null);
 
   // 스트링 카탈로그 로드
   useEffect(() => {
@@ -111,8 +107,6 @@ export default function RacketsScreen() {
     setAppliedEditId(editId ?? null);
     setMessage(undefined);
     setSuccessDialog(null);
-    setDeleteTarget(null);
-    setSelectedDetail(null);
   }, [clearForm, editId]);
 
   useResetOnBlur(resetScreen);
@@ -292,37 +286,6 @@ export default function RacketsScreen() {
     }
   };
 
-  const handleSetPrimaryRacket = async (racket: UserRacket) => {
-    try {
-      await setPrimaryRacket(racket.id);
-      await loadRackets();
-      setSuccessDialog({
-        title: '메인 라켓이 변경되었습니다',
-        message: '확인을 누르면 라켓 목록을 확인할 수 있습니다.',
-      });
-    } catch {
-      setMessage('메인 라켓 설정 실패');
-    }
-  };
-
-  const handleDeleteRacket = async () => {
-    if (!deleteTarget) {
-      return;
-    }
-
-    try {
-      await deleteRacket(deleteTarget.id);
-      setDeleteTarget(null);
-      await loadRackets();
-      setSuccessDialog({
-        title: '라켓이 삭제되었습니다',
-        message: '확인을 누르면 라켓 목록을 확인할 수 있습니다.',
-      });
-    } catch {
-      setMessage('라켓 삭제 실패');
-    }
-  };
-
   const mainStringItem =
     stringCatalog.find((s) => s.id === mainStringId) ?? null;
 
@@ -332,21 +295,16 @@ export default function RacketsScreen() {
         visible={successDialog !== null}
         title={successDialog?.title ?? ''}
         message={successDialog?.message}
-        onConfirm={() => setSuccessDialog(null)}
-      />
-      <ConfirmDialog
-        visible={deleteTarget !== null}
-        title="라켓을 삭제할까요?"
-        message={
-          deleteTarget ? `${deleteTarget.brand} ${deleteTarget.model}` : undefined
-        }
-        confirmLabel="삭제"
-        onCancel={() => setDeleteTarget(null)}
-        onConfirm={handleDeleteRacket}
+        onConfirm={() => {
+          setSuccessDialog(null);
+          router.replace('/racket-list');
+        }}
       />
       <View style={styles.titleRow}>
         <BackButton onPress={() => router.back()} />
-        <Typography variant="h1">내 라켓</Typography>
+        <Typography variant="h1">
+          {editingRacketId ? '라켓 수정' : '라켓 추가'}
+        </Typography>
       </View>
 
       {/* 라켓 등록/수정 폼 */}
@@ -469,86 +427,6 @@ export default function RacketsScreen() {
         ) : null}
       </View>
 
-      {/* 등록된 라켓 목록 */}
-      <View style={styles.section}>
-        {rackets.map((racket) => (
-          <View key={racket.id} style={styles.card}>
-            <Typography variant="h2">
-              {racket.brand} {racket.model}
-            </Typography>
-            <Typography variant="caption" style={styles.muted}>
-              {racket.is_primary ? '메인 라켓' : '보조 라켓'}
-              {racket.grip_size ? ` · ${racket.grip_size}` : ''}
-              {racket.weight ? ` · ${racket.weight}g` : ''}
-              {racket.balance ? ` · ${racket.balance}` : ''}
-            </Typography>
-            <Typography variant="caption" style={styles.muted}>
-              사진 {racket.photo_url ? '등록됨' : '미등록'}
-            </Typography>
-            {racket.memo ? (
-              <Typography variant="body">{racket.memo}</Typography>
-            ) : null}
-            <View style={styles.actions}>
-              <Button
-                accessibilityLabel={`${racket.model} 라켓 상세`}
-                onPress={() => {
-                  setSelectedDetail(racket);
-                  router.push({
-                    pathname: '/racket-detail',
-                    params: { id: racket.id },
-                  });
-                }}
-                size="sm"
-                variant="outline"
-              >
-                상세
-              </Button>
-              <Button
-                accessibilityLabel={`${racket.model} 라켓 수정`}
-                onPress={() =>
-                  startEditing(racket).catch(() =>
-                    setMessage('라켓 정보를 불러오지 못했습니다.'),
-                  )
-                }
-                size="sm"
-                variant="outline"
-              >
-                수정
-              </Button>
-              <Button
-                accessibilityLabel={`${racket.model} 메인 라켓 설정`}
-                disabled={racket.is_primary}
-                onPress={() => handleSetPrimaryRacket(racket)}
-                size="sm"
-                variant="outline"
-              >
-                메인
-              </Button>
-              <Button
-                accessibilityLabel={`${racket.model} 라켓 삭제`}
-                onPress={() => setDeleteTarget(racket)}
-                size="sm"
-                variant="outline"
-              >
-                삭제
-              </Button>
-            </View>
-          </View>
-        ))}
-      </View>
-
-      {selectedDetail ? (
-        <View style={styles.card}>
-          <Typography variant="h2">라켓 상세</Typography>
-          <Typography variant="body">
-            {selectedDetail.brand} {selectedDetail.model}
-          </Typography>
-          <Typography variant="caption" style={styles.muted}>
-            사진 {selectedDetail.photo_url ?? '미등록'}
-          </Typography>
-        </View>
-      ) : null}
-
       {message ? (
         <Typography
           accessibilityRole="alert"
@@ -577,14 +455,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: theme.spacing[2],
   },
-  card: {
-    backgroundColor: lightColors.card.hex,
-    borderColor: lightColors.border.hex,
-    borderRadius: theme.borderRadius.lg,
-    borderWidth: theme.borderWidth.hairline,
-    gap: theme.spacing[2],
-    padding: theme.spacing[4],
-  },
   muted: {
     color: lightColors.mutedForeground.hex,
   },
@@ -597,10 +467,5 @@ const styles = StyleSheet.create({
   tensionRow: {
     flexDirection: 'row',
     gap: theme.spacing[3],
-  },
-  actions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing[2],
   },
 });

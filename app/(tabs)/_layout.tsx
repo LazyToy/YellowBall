@@ -197,6 +197,7 @@ export default function TabsLayout() {
       />
       <Tabs.Screen name="addresses" options={{ href: null }} />
       <Tabs.Screen name="rackets" options={{ href: null }} />
+      <Tabs.Screen name="racket-list" options={{ href: null }} />
       <Tabs.Screen name="notification-settings" options={{ href: null }} />
       <Tabs.Screen name="notifications" options={{ href: null }} />
       <Tabs.Screen name="booking-detail" options={{ href: null }} />

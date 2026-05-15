@@ -6,6 +6,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { MoreVertical, Loader2 } from 'lucide-react';
 import { updateOrderStatus } from '@/lib/admin-actions';
+import { isOrderStatusLockedAfterCompletion } from '@/lib/admin-status-lock';
 import { ActionFeedbackDialog } from './action-dialogs';
 
 const ORDER_STATUS_OPTIONS = [
@@ -33,6 +34,7 @@ export function OrderStatusMenu({ orderId, currentStatus }: OrderStatusMenuProps
     tone?: 'success' | 'danger';
   } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const locked = isOrderStatusLockedAfterCompletion(status);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -45,6 +47,11 @@ export function OrderStatusMenu({ orderId, currentStatus }: OrderStatusMenuProps
   }, []);
 
   const handleSelect = async (newStatus: string) => {
+    if (locked) {
+      setOpen(false);
+      return;
+    }
+
     if (newStatus === status) {
       setOpen(false);
       return;
@@ -88,8 +95,14 @@ export function OrderStatusMenu({ orderId, currentStatus }: OrderStatusMenuProps
         onConfirm={() => setFeedback(null)}
       />
       <button
-        onClick={() => setOpen((v) => !v)}
-        className="size-7 inline-grid place-items-center rounded-md hover:bg-secondary"
+        onClick={() => {
+          if (!locked) {
+            setOpen((v) => !v);
+          }
+        }}
+        disabled={locked}
+        title={locked ? '완료된 상태는 변경할 수 없습니다.' : undefined}
+        className="size-7 inline-grid place-items-center rounded-md hover:bg-secondary disabled:opacity-50 disabled:cursor-not-allowed"
         aria-label="주문 상태 변경"
       >
         <MoreVertical className="size-4 text-muted-foreground" />

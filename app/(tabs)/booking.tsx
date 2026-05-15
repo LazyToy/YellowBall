@@ -1,11 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
   useWindowDimensions,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 
 import { Text } from '@/components/AppText';
 import {
@@ -30,7 +30,6 @@ import { getMyDemoBookings } from '@/services/demoBookingService';
 import type { DemoBooking } from '@/types/database';
 import {
   getBookingRacketLabel,
-  getBookingSlotLabel,
   getBookingStringLabel,
 } from '@/utils/bookingDisplay';
 import { formatKstDateTime } from '@/utils/kstDateTime';
@@ -53,6 +52,43 @@ const getServiceBookingListLabel = (booking: ServiceBookingWithMeta) =>
   serviceBookingStatusGroup(booking.status) === 'active'
     ? '취소 요청'
     : serviceBookingStatusLabels[booking.status];
+
+const getServiceBookingStartLabel = (booking: ServiceBookingWithMeta) =>
+  booking.booking_slots?.start_time
+    ? formatDateTime(booking.booking_slots.start_time)
+    : `슬롯 ${booking.slot_id.slice(0, 8)}`;
+
+type DemoBookingWithMeta = DemoBooking & {
+  demo_rackets?: {
+    brand?: string | null;
+    model?: string | null;
+  } | null;
+  booking_slots?: {
+    start_time?: string | null;
+  } | null;
+};
+
+const joinParts = (...parts: (string | null | undefined)[]) =>
+  parts.filter(Boolean).join(' ');
+
+const getDemoBookingRacketLabel = (booking: DemoBooking) => {
+  const related = booking as DemoBookingWithMeta;
+  const label = joinParts(
+    related.demo_rackets?.brand,
+    related.demo_rackets?.model,
+  );
+
+  return label || `라켓 ${booking.demo_racket_id.slice(0, 8)}`;
+};
+
+const getDemoBookingStartLabel = (booking: DemoBooking) => {
+  const related = booking as DemoBookingWithMeta;
+
+  return formatDateTime(related.booking_slots?.start_time ?? booking.start_time);
+};
+
+const getDemoBookingReturnLabel = (booking: DemoBooking) =>
+  formatDateTime(booking.expected_return_time);
 
 export default function BookingScreen() {
   const router = useRouter();
@@ -80,9 +116,11 @@ export default function BookingScreen() {
     setDemoBookings(demoRows);
   }, [profileId]);
 
-  useEffect(() => {
-    loadBookings().catch(() => setMessage('예약 목록을 불러오지 못했습니다.'));
-  }, [loadBookings]);
+  useFocusEffect(
+    useCallback(() => {
+      loadBookings().catch(() => setMessage('예약 목록을 불러오지 못했습니다.'));
+    }, [loadBookings]),
+  );
 
   const upcomingCount = useMemo(
     () =>
@@ -103,6 +141,14 @@ export default function BookingScreen() {
       router.push({
         pathname: '/booking-detail',
         params: { id },
+      }),
+    [router],
+  );
+  const openDemoBookingDetail = useCallback(
+    (id: string) =>
+      router.push({
+        pathname: '/booking-detail',
+        params: { id, type: 'demo' },
       }),
     [router],
   );
@@ -179,6 +225,7 @@ export default function BookingScreen() {
           compact={compactLayout}
           demoBookings={demoBookings}
           serviceBookings={serviceBookings}
+          onPressDemoDetail={openDemoBookingDetail}
           onPressDetail={openBookingDetail}
         />
       ) : (
@@ -291,11 +338,13 @@ function BookingTabButton({
 function UpcomingBookings({
   compact,
   demoBookings,
+  onPressDemoDetail,
   onPressDetail,
   serviceBookings,
 }: {
   compact: boolean;
   demoBookings: DemoBooking[];
+  onPressDemoDetail: (id: string) => void;
   onPressDetail: (id: string) => void;
   serviceBookings: ServiceBookingWithMeta[];
 }) {
@@ -325,7 +374,12 @@ function UpcomingBookings({
         />
       ))}
       {demoBookings.map((booking) => (
-        <DemoBookingCard booking={booking} key={booking.id} />
+        <DemoBookingCard
+          booking={booking}
+          compact={compact}
+          key={booking.id}
+          onPress={() => onPressDemoDetail(booking.id)}
+        />
       ))}
     </View>
   );
@@ -402,7 +456,7 @@ function ServiceBookingCard({
             <DetailRow
               compact={compact}
               label="예약 시간"
-              value={getBookingSlotLabel(booking)}
+              value={getServiceBookingStartLabel(booking)}
             />
             <DetailRow
               compact={compact}
@@ -439,22 +493,72 @@ function ServiceBookingCard({
   );
 }
 
-function DemoBookingCard({ booking }: { booking: DemoBooking }) {
+function DemoBookingCard({
+  booking,
+  compact,
+  onPress,
+}: {
+  booking: DemoBooking;
+  compact: boolean;
+  onPress: () => void;
+}) {
   return (
-    <Card>
-      <View style={styles.bookingCardHeader}>
-        <GlyphBubble glyph="S" tone="accent" size={40} />
-        <View style={styles.flex}>
-          <View style={styles.titleRow}>
-            <Text style={styles.bookingType}>라켓 시타</Text>
-            <Pill>{demoBookingStatusLabels[booking.status]}</Pill>
+    <View style={styles.bookingCardSurface} testID="demo-booking-card-surface">
+      <Pressable
+        accessibilityLabel="시타 예약 상세 보기"
+        accessibilityRole="button"
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.bookingCardTouch,
+          pressed && styles.pressed,
+        ]}
+        testID="demo-booking-card"
+      >
+        <View
+          pointerEvents="none"
+          style={[
+            styles.cardColumn,
+            styles.bookingCardContent,
+            compact && styles.bookingCardContentCompact,
+          ]}
+          testID="demo-booking-card-content"
+        >
+          <View style={styles.bookingCardHeader}>
+            <GlyphBubble glyph="S" tone="accent" size={40} />
+            <View style={styles.flex}>
+              <View style={styles.titleRow}>
+                <Text style={styles.bookingType}>라켓 시타</Text>
+                <Pill>{demoBookingStatusLabels[booking.status]}</Pill>
+              </View>
+              <Text style={styles.metaText}>
+                예약 #{booking.id.slice(0, 6)}
+              </Text>
+            </View>
+            <View style={styles.chevronSlot}>
+              <Chevron />
+            </View>
           </View>
-          <Text style={styles.metaText}>
-            {formatDateTime(booking.start_time)} - {formatDateTime(booking.expected_return_time)}
-          </Text>
+
+          <View style={styles.detailBox} testID="demo-booking-detail-box">
+            <DetailRow
+              compact={compact}
+              label="라켓"
+              value={getDemoBookingRacketLabel(booking)}
+            />
+            <DetailRow
+              compact={compact}
+              label="대여 예정 시간"
+              value={getDemoBookingStartLabel(booking)}
+            />
+            <DetailRow
+              compact={compact}
+              label="반납 예정 시간"
+              value={getDemoBookingReturnLabel(booking)}
+            />
+          </View>
         </View>
-      </View>
-    </Card>
+      </Pressable>
+    </View>
   );
 }
 

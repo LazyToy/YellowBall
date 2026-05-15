@@ -1,0 +1,63 @@
+{
+  "bookingIds": [
+    "aff48047-57b7-45a4-b3d4-b802cc32ee03",
+    "849aae13-a5ed-4e42-82b2-f2b163faeeca",
+    "5a1607c2-3dd0-437c-93ff-a4a3c0b99333"
+  ],
+  "slotIds": [
+    "0cb806e5-4acf-4781-8222-57e28c18b820",
+    "4dc6fb9b-a0e3-42f7-a410-275fcd879b62",
+    "35a85ed0-2a0c-4349-9a06-c5f781bf0abf"
+  ],
+  "userId": "e0a436a9-bf67-4257-b453-b4727bab3cb9",
+  "steps": [
+    {
+      "name": "delete logs",
+      "error": null,
+      "data": []
+    },
+    {
+      "name": "delete bookings",
+      "error": null,
+      "data": [
+        {
+          "id": "aff48047-57b7-45a4-b3d4-b802cc32ee03"
+        },
+        {
+          "id": "849aae13-a5ed-4e42-82b2-f2b163faeeca"
+        },
+        {
+          "id": "5a1607c2-3dd0-437c-93ff-a4a3c0b99333"
+        }
+      ]
+    },
+    {
+      "name": "delete slots",
+      "error": null,
+      "data": [
+        {
+          "id": "0cb806e5-4acf-4781-8222-57e28c18b820"
+        },
+        {
+          "id": "4dc6fb9b-a0e3-42f7-a410-275fcd879b62"
+        },
+        {
+          "id": "35a85ed0-2a0c-4349-9a06-c5f781bf0abf"
+        }
+      ]
+    },
+    {
+      "name": "delete auth user",
+      "error": null,
+      "data": {
+        "user": {}
+      }
+    }
+  ],
+  "verify": {
+    "bookings": [],
+    "slots": [],
+    "profile": [],
+    "errors": []
+  }
+}

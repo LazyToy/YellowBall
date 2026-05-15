@@ -1,4 +1,5 @@
 import { BookingStatusMenu } from '@/components/admin/booking-status-menu';
+import { BookingActionButtons } from '@/components/admin/booking-action-buttons';
 import { AdminPageHeader } from '@/components/admin/admin-page-header';
 import {
   formatDateTime,
@@ -62,6 +63,10 @@ export default async function AdminBookingDetailPage({ params }: PageProps) {
   const customerName = getCustomerName(booking.profiles);
   const phone = booking.profiles?.phone ?? '-';
   const bookingTypeLabel = type === 'service' ? '스트링 예약' : '시타 예약';
+  const hasCancelRequest =
+    type === 'service' && 'has_cancel_request' in booking
+      ? booking.has_cancel_request === true
+      : false;
 
   const serviceBooking = type === 'service' ? booking : null;
   const demoBooking = type === 'demo' ? booking : null;
@@ -122,6 +127,12 @@ export default async function AdminBookingDetailPage({ params }: PageProps) {
               realId={booking.id}
               bookingType={type}
               currentStatus={booking.status}
+            />
+            <BookingActionButtons
+              realId={booking.id}
+              bookingType={type}
+              currentStatus={booking.status}
+              hasCancelRequest={hasCancelRequest}
             />
           </div>
         </div>

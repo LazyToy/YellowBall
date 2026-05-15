@@ -3,13 +3,19 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image, StyleSheet, View } from 'react-native';
 
 import { Badge } from '@/components/Badge';
+import { Button } from '@/components/Button';
+import { ConfirmDialog } from '@/components/FeedbackDialog';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { BackButton } from '@/components/MobileUI';
 import { RefreshableScrollView } from '@/components/PageRefresh';
 import { Typography } from '@/components/Typography';
 import { lightColors, theme } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
-import { getRacket } from '@/services/racketService';
+import {
+  deleteRacket,
+  getRacket,
+  setPrimaryRacket,
+} from '@/services/racketService';
 import { getStringById } from '@/services/stringCatalogService';
 import { getSetupsByRacket } from '@/services/stringSetupService';
 import { getRacketPhotoUrl } from '@/services/storageService';
@@ -32,6 +38,7 @@ export default function RacketDetailScreen() {
   );
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState<string>();
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const loadRacket = useCallback(async () => {
     if (!id) {
@@ -78,6 +85,35 @@ export default function RacketDetailScreen() {
     loadRacket();
   }, [loadRacket]);
 
+  const handleDeleteRacket = async () => {
+    if (!id) {
+      return;
+    }
+
+    try {
+      await deleteRacket(id);
+      setShowDeleteConfirm(false);
+      router.replace('/racket-list');
+    } catch {
+      setShowDeleteConfirm(false);
+      setMessage('라켓 삭제 실패');
+    }
+  };
+
+  const handleSetPrimaryRacket = async () => {
+    if (!id) {
+      return;
+    }
+
+    try {
+      await setPrimaryRacket(id);
+      await loadRacket();
+      setMessage('메인 라켓으로 설정되었습니다.');
+    } catch {
+      setMessage('메인 라켓 설정 실패');
+    }
+  };
+
   if (isLoading) {
     return <LoadingSpinner fullScreen label="라켓 상세 불러오는 중" />;
   }
@@ -86,7 +122,7 @@ export default function RacketDetailScreen() {
     return (
       <View style={styles.container}>
         <View style={styles.titleRow}>
-          <BackButton onPress={() => goBackOrReplace(router, '/rackets', from)} />
+          <BackButton onPress={() => goBackOrReplace(router, '/racket-list', from)} />
           <Typography variant="h1">라켓 상세</Typography>
         </View>
         <Typography accessibilityRole="alert" variant="body" style={styles.muted}>
@@ -98,8 +134,16 @@ export default function RacketDetailScreen() {
 
   return (
     <RefreshableScrollView contentContainerStyle={styles.container}>
+      <ConfirmDialog
+        visible={showDeleteConfirm}
+        title="라켓을 삭제할까요?"
+        message={`${racket.brand} ${racket.model}`}
+        confirmLabel="삭제"
+        onCancel={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDeleteRacket}
+      />
       <View style={styles.header}>
-        <BackButton onPress={() => goBackOrReplace(router, '/rackets', from)} />
+        <BackButton onPress={() => goBackOrReplace(router, '/racket-list', from)} />
         <View style={styles.flex}>
           <Typography variant="h1">
             {racket.brand} {racket.model}
@@ -111,6 +155,39 @@ export default function RacketDetailScreen() {
         <Badge variant={racket.is_primary ? 'success' : 'secondary'}>
           {racket.is_primary ? '메인 라켓' : '보조 라켓'}
         </Badge>
+      </View>
+
+      <View style={styles.actions}>
+        <Button
+          accessibilityLabel="라켓 수정"
+          onPress={() =>
+            router.push({
+              pathname: '/rackets',
+              params: { editId: racket.id },
+            })
+          }
+          size="sm"
+          variant="outline"
+        >
+          수정하기
+        </Button>
+        <Button
+          accessibilityLabel="라켓 삭제"
+          onPress={() => setShowDeleteConfirm(true)}
+          size="sm"
+          variant="outline"
+        >
+          삭제하기
+        </Button>
+        <Button
+          accessibilityLabel="메인 라켓 설정"
+          disabled={racket.is_primary}
+          onPress={handleSetPrimaryRacket}
+          size="sm"
+          variant="outline"
+        >
+          메인 설정
+        </Button>
       </View>
 
       {racket.photo_url ? (
@@ -165,7 +242,7 @@ export default function RacketDetailScreen() {
           <Typography variant="body" style={styles.muted}>
             등록된 스트링 정보가 없습니다.{'\n'}
             <Typography variant="caption" style={styles.muted}>
-              내 라켓 화면에서 스트링을 선택해보세요.
+              라켓 수정 화면에서 스트링을 선택해보세요.
             </Typography>
           </Typography>
         )}
@@ -177,6 +254,12 @@ export default function RacketDetailScreen() {
           <Typography variant="h2">메모</Typography>
           <Typography variant="body">{racket.memo}</Typography>
         </View>
+      ) : null}
+
+      {message ? (
+        <Typography accessibilityRole="alert" variant="caption" style={styles.muted}>
+          {message}
+        </Typography>
       ) : null}
     </RefreshableScrollView>
   );
@@ -209,6 +292,10 @@ const styles = StyleSheet.create({
   },
   titleRow: {
     alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing[2],
+  },
+  actions: {
     flexDirection: 'row',
     gap: theme.spacing[2],
   },

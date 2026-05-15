@@ -2,7 +2,7 @@
 
 /**
  * 예약 목록 필터 패널 (클라이언트 컴포넌트)
- * - 상태 탭 필터: 전체 / 접수 / 승인 / 작업중 / 완료
+ * - 상태 탭 필터: 전체 / 접수 / 승인 / 작업중 / 완료 / 관리자 취소 / 노쇼
  * - 날짜 범위 필터: 시작일 ~ 종료일 (방문 일시 기준)
  * - 예약 유형 필터: 전체 / 스트링 / 시타
  * - 텍스트 검색: 고객명 / 예약번호
@@ -41,9 +41,7 @@ const STATUS_TABS: readonly StatusTab[] = [
       'requested',
       'reschedule_requested',
       'cancelled_user',
-      'cancelled_admin',
       'rejected',
-      'no_show',
     ],
     color: 'text-destructive',
   },
@@ -72,6 +70,18 @@ const STATUS_TABS: readonly StatusTab[] = [
     ],
     color: 'text-muted-foreground',
   },
+  {
+    key: 'cancelled_admin',
+    label: '관리자 취소',
+    statuses: ['cancelled_admin'],
+    color: 'text-muted-foreground',
+  },
+  {
+    key: 'no_show',
+    label: '노쇼',
+    statuses: ['no_show'],
+    color: 'text-destructive',
+  },
 ];
 
 const TYPE_OPTIONS = [
@@ -94,7 +104,7 @@ const STATUS_STYLE: Record<string, string> = {
   cancelled_user: 'bg-secondary text-foreground',
   cancelled_admin: 'bg-secondary text-foreground',
   rejected: 'bg-secondary text-foreground',
-  no_show: 'bg-secondary text-foreground',
+  no_show: 'bg-destructive/10 text-destructive',
   refund_pending: 'bg-chart-4/15 text-chart-4',
   refund_done: 'bg-chart-4/15 text-chart-4',
 };
@@ -555,7 +565,9 @@ export function BookingsFilterPanel({ bookings }: BookingsFilterPanelProps) {
                     <td className="px-4 py-3">
                       <span
                         className={`text-[10px] font-bold px-2 py-1 rounded-full ${
-                          STATUS_STYLE[b.status] ?? 'bg-secondary text-foreground'
+                          b.hasCancelRequest
+                            ? 'bg-destructive/10 text-destructive'
+                            : STATUS_STYLE[b.status] ?? 'bg-secondary text-foreground'
                         }`}
                       >
                         {b.statusLabel}

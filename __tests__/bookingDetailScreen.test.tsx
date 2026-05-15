@@ -2,10 +2,12 @@ import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 
 const mockGetBookingDetail = jest.fn();
+const mockGetDemoBookingDetail = jest.fn();
 const mockCancelBooking = jest.fn();
+let mockSearchParams: Record<string, string | undefined>;
 
 jest.mock('expo-router', () => ({
-  useLocalSearchParams: () => ({ id: 'booking-1' }),
+  useLocalSearchParams: () => mockSearchParams,
   useRouter: () => ({
     back: jest.fn(),
   }),
@@ -14,6 +16,10 @@ jest.mock('expo-router', () => ({
 jest.mock('../src/services/bookingService', () => ({
   getBookingDetail: mockGetBookingDetail,
   cancelBooking: mockCancelBooking,
+}));
+
+jest.mock('../src/services/demoBookingService', () => ({
+  getDemoBookingDetail: mockGetDemoBookingDetail,
 }));
 
 const booking = {
@@ -58,10 +64,38 @@ const booking = {
   },
 };
 
+const demoBooking = {
+  id: 'demo-booking-1',
+  user_id: 'user-1',
+  demo_racket_id: 'demo-racket-1',
+  slot_id: 'demo-slot-1',
+  start_time: '2026-05-04T01:00:00.000Z',
+  expected_return_time: '2026-05-05T01:00:00.000Z',
+  actual_return_time: null,
+  status: 'approved',
+  user_notes: '오전 방문',
+  admin_notes: '라켓 준비 완료',
+  created_at: '2026-05-04T00:00:00.000Z',
+  updated_at: '2026-05-04T00:00:00.000Z',
+  demo_rackets: {
+    brand: 'Head',
+    model: 'Speed Demo',
+    grip_size: 'G2',
+    weight: 300,
+    head_size: '100',
+  },
+  booking_slots: {
+    start_time: '2026-05-04T01:00:00.000Z',
+    end_time: '2026-05-04T02:00:00.000Z',
+  },
+};
+
 describe('BookingDetailScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockSearchParams = { id: 'booking-1' };
     mockGetBookingDetail.mockResolvedValue(booking);
+    mockGetDemoBookingDetail.mockResolvedValue(demoBooking);
     mockCancelBooking.mockResolvedValue({
       booking: { ...booking, status: 'cancelled_user' },
       cancelled: true,
@@ -80,9 +114,10 @@ describe('BookingDetailScreen', () => {
     expect(screen.getAllByText('승인').length).toBeGreaterThan(0);
     expect(screen.getByText('라켓 Wilson Blade')).toBeTruthy();
     expect(screen.getByText('스트링 Luxilon Alu Power / Babolat RPM Blast')).toBeTruthy();
+    expect(screen.getByText('예약 시간 2026-05-04 09:00')).toBeTruthy();
     expect(
-      screen.getByText('예약 시간 2026-05-04 09:00 - 2026-05-04 10:00'),
-    ).toBeTruthy();
+      screen.queryByText('예약 시간 2026-05-04 09:00 - 2026-05-04 10:00'),
+    ).toBeNull();
     expect(screen.getByText('텐션 48/46 lbs')).toBeTruthy();
     expect(screen.getByText('수령 방식 택배')).toBeTruthy();
     expect(
@@ -134,5 +169,21 @@ describe('BookingDetailScreen', () => {
     fireEvent.press(screen.getAllByLabelText('예약 취소')[0]);
 
     await waitFor(() => expect(screen.getByText('예약을 취소했습니다')).toBeTruthy());
+  });
+
+  test('시타 예약 상세 정보를 표시한다', async () => {
+    mockSearchParams = { id: 'demo-booking-1', type: 'demo' };
+    const BookingDetailScreen = require('../app/(tabs)/booking-detail').default;
+    const screen = render(<BookingDetailScreen />);
+
+    await waitFor(() => expect(screen.getByText('시타 예약 상세')).toBeTruthy());
+
+    expect(mockGetDemoBookingDetail).toHaveBeenCalledWith('demo-booking-1');
+    expect(screen.getByText('라켓 Head Speed Demo')).toBeTruthy();
+    expect(screen.getByText('스펙 300g · G2 · 헤드 100')).toBeTruthy();
+    expect(screen.getByText('대여 예정 시간 2026-05-04 10:00')).toBeTruthy();
+    expect(screen.getByText('반납 예정 시간 2026-05-05 10:00')).toBeTruthy();
+    expect(screen.getByText('사용자 메모: 오전 방문')).toBeTruthy();
+    expect(screen.getByText('관리자 메모: 라켓 준비 완료')).toBeTruthy();
   });
 });

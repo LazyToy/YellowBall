@@ -78,13 +78,12 @@ export const getBookingStringLabel = (booking: ServiceBooking) => {
 export const getBookingSlotLabel = (booking: ServiceBooking) => {
   const related = booking as BookingRelations;
   const startTime = related.booking_slots?.start_time;
-  const endTime = related.booking_slots?.end_time;
 
   if (!startTime) {
     return `슬롯 ${booking.slot_id.slice(0, 8)}`;
   }
 
-  return `${formatBookingDateTime(startTime)} - ${formatBookingDateTime(endTime)}`;
+  return formatBookingDateTime(startTime);
 };
 
 export const getBookingDeliveryMethodLabel = (booking: ServiceBooking) =>

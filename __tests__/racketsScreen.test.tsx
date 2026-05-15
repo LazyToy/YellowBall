@@ -4,8 +4,6 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 const mockGetRackets = jest.fn();
 const mockAddRacket = jest.fn();
 const mockUpdateRacket = jest.fn();
-const mockDeleteRacket = jest.fn();
-const mockSetPrimaryRacket = jest.fn();
 const mockUploadRacketPhoto = jest.fn();
 const mockPush = jest.fn();
 let mockSearchParams: { editId?: string } = {};
@@ -49,9 +47,7 @@ jest.mock('expo-image-picker', () => ({
 
 jest.mock('../src/services/racketService', () => ({
   addRacket: mockAddRacket,
-  deleteRacket: mockDeleteRacket,
   getRackets: mockGetRackets,
-  setPrimaryRacket: mockSetPrimaryRacket,
   updateRacket: mockUpdateRacket,
 }));
 
@@ -99,36 +95,15 @@ describe('RacketsScreen', () => {
     expect(mockAddRacket).not.toHaveBeenCalled();
   });
 
-  test('상세와 수정 플로우에서 무게/밸런스/사진 필드를 다룬다', async () => {
+  test('라켓 추가 화면은 저장 폼만 보여주고 기존 목록 관리 버튼을 섞지 않는다', async () => {
     const RacketsScreen = require('../app/(tabs)/rackets').default;
     const screen = render(<RacketsScreen />);
 
-    await waitFor(() => expect(screen.getByText('Wilson Blade')).toBeTruthy());
-
-    fireEvent.press(screen.getByLabelText('Blade 라켓 상세'));
-    expect(screen.getByText('라켓 상세')).toBeTruthy();
-    expect(screen.getByText('사진 https://example.com/racket.jpg')).toBeTruthy();
-    expect(mockPush).toHaveBeenCalledWith({
-      pathname: '/racket-detail',
-      params: { id: 'racket-1' },
-    });
-
-    fireEvent.press(screen.getByLabelText('Blade 라켓 수정'));
-    fireEvent.changeText(screen.getByLabelText('밸런스'), '325mm');
-    await act(async () => {
-      fireEvent.press(screen.getByLabelText('라켓 수정 저장'));
-    });
-
-    await waitFor(() =>
-      expect(mockUpdateRacket).toHaveBeenCalledWith(
-        'racket-1',
-        expect.objectContaining({
-          weight: 305,
-          balance: '325mm',
-          photo_url: 'https://example.com/racket.jpg',
-        }),
-      ),
-    );
+    await waitFor(() => expect(mockGetRackets).toHaveBeenCalledWith('user-1'));
+    expect(screen.getByLabelText('라켓 추가')).toBeTruthy();
+    expect(screen.queryByText('Wilson Blade')).toBeNull();
+    expect(screen.queryByLabelText('Blade 라켓 상세')).toBeNull();
+    expect(screen.queryByLabelText('Blade 라켓 수정')).toBeNull();
   });
 
   test('사진 파일 URI가 있으면 Storage 업로드 후 반환 URL로 라켓을 저장한다', async () => {

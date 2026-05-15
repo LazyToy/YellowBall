@@ -1,11 +1,14 @@
 import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
-import { StyleSheet } from 'react-native';
+import { Keyboard, StyleSheet } from 'react-native';
 
 const mockReplace = jest.fn();
 const mockSignIn = jest.fn();
 const mockSignInWithOAuthProvider = jest.fn();
 const mockGetAppContentBlock = jest.fn();
+const mockKeyboardDismiss = jest
+  .spyOn(Keyboard, 'dismiss')
+  .mockImplementation(() => undefined);
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
@@ -39,6 +42,7 @@ const flattenStyle = (style: unknown) =>
 describe('LoginScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockKeyboardDismiss.mockClear();
     mockGetAppContentBlock.mockResolvedValue(null);
     mockSignIn.mockResolvedValue({
       session: { user: { id: 'user-1' } },
@@ -148,6 +152,36 @@ describe('LoginScreen', () => {
     );
   });
 
+  test('uses the DB-backed brand asset only in the hero logo on the login page', async () => {
+    mockGetAppContentBlock.mockResolvedValue({
+      login_logo_path: 'brand/yellowball-logo-transparent.png',
+    });
+    const LoginScreen = require('../app/(auth)/login').default;
+    const screen = render(<LoginScreen />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('login-brand-logo-hero').props.source).toEqual({
+        uri: 'https://storage.example.com/app-assets/brand/yellowball-logo-transparent.png',
+      }),
+    );
+    expect(screen.queryByTestId('login-brand-logo-small')).toBeNull();
+  });
+
+  test('fits the hero logo inside its circle without cropping the mark', () => {
+    const LoginScreen = require('../app/(auth)/login').default;
+    const screen = render(<LoginScreen />);
+    const heroLogo = screen.getByTestId('login-brand-logo-hero');
+    const heroLogoStyle = StyleSheet.flatten(heroLogo.props.style);
+
+    expect(heroLogo.props.resizeMode).toBe('contain');
+    expect(heroLogoStyle).toEqual(
+      expect.objectContaining({
+        height: 92,
+        width: 92,
+      }),
+    );
+  });
+
   test('로그인 실패 시 오류 메시지를 표시한다', async () => {
     mockSignIn.mockResolvedValue({
       session: null,
@@ -188,7 +222,42 @@ describe('LoginScreen', () => {
     expect(mockReplace).not.toHaveBeenCalledWith('/(tabs)');
   });
 
-  test('로그인 성공 시 탭 화면으로 이동한다', async () => {
+  test('이메일 로그인 인증 확인 중에는 로그인 화면 안에 로딩 화면을 표시한다', async () => {
+    mockSignIn.mockImplementation(() => new Promise(() => undefined));
+    const LoginScreen = require('../app/(auth)/login').default;
+    const screen = render(<LoginScreen />);
+
+    fireEvent.changeText(screen.getByLabelText('이메일'), 'user@example.com');
+    fireEvent.changeText(screen.getByLabelText('비밀번호'), 'Yellow1!');
+    fireEvent.press(screen.getByLabelText('로그인'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('login-auth-loading')).toBeTruthy(),
+    );
+    expect(
+      StyleSheet.flatten(screen.getByTestId('login-auth-loading').props.style),
+    ).toEqual(
+      expect.objectContaining({
+        backgroundColor: 'rgba(10, 20, 15, 0.24)',
+        position: 'absolute',
+      }),
+    );
+    expect(
+      StyleSheet.flatten(screen.getByTestId('login-auth-loading-panel').props.style),
+    ).toEqual(
+      expect.objectContaining({
+        backgroundColor: '#ffffff',
+        borderRadius: 22,
+        maxWidth: 320,
+        width: '100%',
+      }),
+    );
+    expect(screen.getByText('인증 상태 확인 중')).toBeTruthy();
+    expect(mockKeyboardDismiss).toHaveBeenCalledTimes(1);
+    expect(mockReplace).not.toHaveBeenCalledWith('/(tabs)');
+  });
+
+  test('로그인 성공 시 로그인 화면에서 직접 탭 화면으로 이동하지 않는다', async () => {
     const LoginScreen = require('../app/(auth)/login').default;
     const screen = render(<LoginScreen />);
 
@@ -199,10 +268,27 @@ describe('LoginScreen', () => {
     await waitFor(() =>
       expect(mockSignIn).toHaveBeenCalledWith('user@example.com', 'Yellow1!'),
     );
-    expect(mockReplace).toHaveBeenCalledWith('/(tabs)');
+    expect(mockReplace).not.toHaveBeenCalledWith('/(tabs)');
   });
 
-  test('Google 로그인 성공 시 탭 화면으로 이동한다', async () => {
+  test('Google 로그인 인증 확인 중에는 로그인 화면 안에 로딩 화면을 표시한다', async () => {
+    mockSignInWithOAuthProvider.mockImplementation(
+      () => new Promise(() => undefined),
+    );
+    const LoginScreen = require('../app/(auth)/login').default;
+    const screen = render(<LoginScreen />);
+
+    fireEvent.press(screen.getByLabelText('Google로 로그인'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('login-auth-loading')).toBeTruthy(),
+    );
+    expect(screen.getByText('인증 상태 확인 중')).toBeTruthy();
+    expect(mockKeyboardDismiss).toHaveBeenCalledTimes(1);
+    expect(mockReplace).not.toHaveBeenCalledWith('/(tabs)');
+  });
+
+  test('Google 로그인 성공 시 로그인 화면에서 직접 탭 화면으로 이동하지 않는다', async () => {
     const LoginScreen = require('../app/(auth)/login').default;
     const screen = render(<LoginScreen />);
 
@@ -211,6 +297,6 @@ describe('LoginScreen', () => {
     await waitFor(() =>
       expect(mockSignInWithOAuthProvider).toHaveBeenCalledWith('google'),
     );
-    expect(mockReplace).toHaveBeenCalledWith('/(tabs)');
+    expect(mockReplace).not.toHaveBeenCalledWith('/(tabs)');
   });
 });

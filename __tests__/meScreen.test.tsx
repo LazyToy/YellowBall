@@ -125,6 +125,13 @@ describe('MeScreen', () => {
     expect(screen.getByLabelText('로그아웃')).toBeTruthy();
   });
 
+  test('마이페이지 헤더에 중복 알림 설정 톱니바퀴를 노출하지 않는다', async () => {
+    const screen = await renderReadyMeScreen();
+
+    expect(screen.queryByLabelText('설정')).toBeNull();
+    expect(screen.getByLabelText('알림 설정')).toBeTruthy();
+  });
+
   test('프로필 수정 모드에서 닉네임과 전화번호를 저장한다', async () => {
     const screen = await renderReadyMeScreen();
 
@@ -149,6 +156,20 @@ describe('MeScreen', () => {
 
     await waitFor(() => expect(mockSignOut).toHaveBeenCalledTimes(1));
     expect(mockReplace).toHaveBeenCalledWith('/(auth)/login');
+  });
+
+  test('로그아웃 처리 중에는 마이페이지 안에 로딩 화면을 표시한다', async () => {
+    mockSignOut.mockImplementation(() => new Promise(() => undefined));
+    const screen = await renderReadyMeScreen();
+
+    fireEvent.press(screen.getByLabelText('로그아웃'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('me-signout-loading')).toBeTruthy(),
+    );
+    expect(screen.getByText('로그아웃 중')).toBeTruthy();
+    expect(screen.getByText('안전하게 세션을 정리하고 있습니다.')).toBeTruthy();
+    expect(mockReplace).not.toHaveBeenCalledWith('/(auth)/login');
   });
 
   test('마이페이지 메뉴는 임시 샵/알림함 라우팅 대신 준비 안내를 표시한다', async () => {
@@ -181,7 +202,7 @@ describe('MeScreen', () => {
     expect(screen.queryByText('배송지 관리')).toBeNull();
   });
 
-  test('내 라켓 카드는 수정/삭제 가능한 라켓 관리 화면으로 이동한다', async () => {
+  test('내 라켓 카드는 상세 화면으로 이동한다', async () => {
     const screen = await renderReadyMeScreen();
 
     await waitFor(() => expect(screen.getByLabelText('Wilson Blade 관리')).toBeTruthy());
@@ -189,26 +210,52 @@ describe('MeScreen', () => {
     fireEvent.press(screen.getByLabelText('Wilson Blade 관리'));
 
     expect(mockPush).toHaveBeenCalledWith({
-      pathname: '/rackets',
-      params: { editId: 'racket-1' },
+      pathname: '/racket-detail',
+      params: { from: '/me', id: 'racket-1' },
     });
   });
 
   test('요약 통계는 Android에서 카드 안의 네 칸 고정폭 레이아웃을 사용한다', async () => {
     const screen = await renderReadyMeScreen();
 
-    expect(StyleSheet.flatten(screen.getByTestId('me-stats-grid').props.style)).toEqual(
+    expect(flattenStyle(screen.getByTestId('me-stats-grid').props.style)).toEqual(
       expect.objectContaining({
         flexDirection: 'row',
-        justifyContent: 'space-between',
+        justifyContent: 'flex-start',
         overflow: 'hidden',
+        width: '100%',
+      }),
+    );
+    expect(flattenStyle(screen.getByTestId('me-stat-wrench-column').props.style)).toEqual(
+      expect.objectContaining({
+        flexBasis: '25%',
+        flexGrow: 0,
+        flexShrink: 0,
+        justifyContent: 'center',
+        maxWidth: '25%',
+        minHeight: 68,
+        minWidth: 0,
+        width: '25%',
       }),
     );
     expect(flattenStyle(screen.getByTestId('me-stat-wrench').props.style)).toEqual(
       expect.objectContaining({
-        flex: 1,
-        minWidth: 0,
+        bottom: 0,
+        left: 0,
+        position: 'absolute',
+        right: 0,
+        top: 0,
       }),
     );
+  });
+
+  test('푸터는 로그아웃 버튼을 버전 문구 위에 배치한다', async () => {
+    const screen = await renderReadyMeScreen();
+    const footerChildren = React.Children.toArray(
+      screen.getByTestId('me-footer').props.children,
+    ) as React.ReactElement[];
+
+    expect(footerChildren[0].props.testID).toBe('me-footer-logout');
+    expect(footerChildren[1].props.testID).toBe('me-footer-version');
   });
 });

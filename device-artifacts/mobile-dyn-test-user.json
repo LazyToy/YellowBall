@@ -1,0 +1,120 @@
+{
+  "suffix": 1778811400701,
+  "user": {
+    "id": "e0a436a9-bf67-4257-b453-b4727bab3cb9",
+    "email": "llm.mobile.dyn.1778811400701@yellowball.test",
+    "password": "YB-mobile-1778811400701!A9"
+  },
+  "slots": [
+    {
+      "id": "0cb806e5-4acf-4781-8222-57e28c18b820",
+      "service_type": "stringing",
+      "start_time": "2026-05-17T02:16:42.574+00:00",
+      "end_time": "2026-05-17T03:16:42.574+00:00",
+      "capacity": 1,
+      "reserved_count": 0,
+      "is_blocked": false,
+      "block_reason": null,
+      "created_at": "2026-05-15T02:16:41.89826+00:00",
+      "updated_at": "2026-05-15T02:16:41.89826+00:00"
+    },
+    {
+      "id": "4dc6fb9b-a0e3-42f7-a410-275fcd879b62",
+      "service_type": "stringing",
+      "start_time": "2026-05-17T03:16:43.121+00:00",
+      "end_time": "2026-05-17T04:16:43.121+00:00",
+      "capacity": 1,
+      "reserved_count": 0,
+      "is_blocked": false,
+      "block_reason": null,
+      "created_at": "2026-05-15T02:16:42.42754+00:00",
+      "updated_at": "2026-05-15T02:16:42.42754+00:00"
+    },
+    {
+      "id": "35a85ed0-2a0c-4349-9a06-c5f781bf0abf",
+      "service_type": "stringing",
+      "start_time": "2026-05-17T04:16:43.661+00:00",
+      "end_time": "2026-05-17T05:16:43.661+00:00",
+      "capacity": 1,
+      "reserved_count": 0,
+      "is_blocked": false,
+      "block_reason": null,
+      "created_at": "2026-05-15T02:16:42.967854+00:00",
+      "updated_at": "2026-05-15T02:16:42.967854+00:00"
+    }
+  ],
+  "bookings": [
+    {
+      "id": "aff48047-57b7-45a4-b3d4-b802cc32ee03",
+      "user_id": "e0a436a9-bf67-4257-b453-b4727bab3cb9",
+      "racket_id": "a213e0f3-e2bb-49f1-8487-1476adf83f62",
+      "main_string_id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+      "cross_string_id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+      "tension_main": 48,
+      "tension_cross": 48,
+      "slot_id": "0cb806e5-4acf-4781-8222-57e28c18b820",
+      "delivery_method": "store_pickup",
+      "address_id": null,
+      "status": "no_show",
+      "user_notes": "LLM mobile no-show 0",
+      "admin_notes": null,
+      "no_show_counted": true,
+      "created_at": "2026-05-15T02:16:42.171383+00:00",
+      "updated_at": "2026-05-15T02:16:42.171383+00:00"
+    },
+    {
+      "id": "849aae13-a5ed-4e42-82b2-f2b163faeeca",
+      "user_id": "e0a436a9-bf67-4257-b453-b4727bab3cb9",
+      "racket_id": "a213e0f3-e2bb-49f1-8487-1476adf83f62",
+      "main_string_id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+      "cross_string_id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+      "tension_main": 48,
+      "tension_cross": 48,
+      "slot_id": "4dc6fb9b-a0e3-42f7-a410-275fcd879b62",
+      "delivery_method": "store_pickup",
+      "address_id": null,
+      "status": "no_show",
+      "user_notes": "LLM mobile no-show 1",
+      "admin_notes": null,
+      "no_show_counted": true,
+      "created_at": "2026-05-15T02:16:42.69544+00:00",
+      "updated_at": "2026-05-15T02:16:42.69544+00:00"
+    },
+    {
+      "id": "5a1607c2-3dd0-437c-93ff-a4a3c0b99333",
+      "user_id": "e0a436a9-bf67-4257-b453-b4727bab3cb9",
+      "racket_id": "a213e0f3-e2bb-49f1-8487-1476adf83f62",
+      "main_string_id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+      "cross_string_id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+      "tension_main": 48,
+      "tension_cross": 48,
+      "slot_id": "35a85ed0-2a0c-4349-9a06-c5f781bf0abf",
+      "delivery_method": "store_pickup",
+      "address_id": null,
+      "status": "no_show",
+      "user_notes": "LLM mobile no-show 2",
+      "admin_notes": null,
+      "no_show_counted": true,
+      "created_at": "2026-05-15T02:16:43.2402+00:00",
+      "updated_at": "2026-05-15T02:16:43.2402+00:00"
+    }
+  ],
+  "racket": {
+    "id": "a213e0f3-e2bb-49f1-8487-1476adf83f62",
+    "owner_id": "e0a436a9-bf67-4257-b453-b4727bab3cb9",
+    "brand": "LLM",
+    "model": "Mobile Dynamic",
+    "grip_size": null,
+    "weight": null,
+    "balance": null,
+    "photo_url": null,
+    "is_primary": true,
+    "memo": null,
+    "created_at": "2026-05-15T02:16:41.452831+00:00"
+  },
+  "string": {
+    "id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+    "brand": "Luxilon",
+    "name": "ALU Power"
+  }
+}

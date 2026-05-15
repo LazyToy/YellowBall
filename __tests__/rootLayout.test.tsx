@@ -119,6 +119,36 @@ describe('RootLayout 인증 분기', () => {
     expect(mockReplace).not.toHaveBeenCalled();
   });
 
+  test('인증 화면에서는 전역 인증 로딩 오버레이를 표시하지 않는다', () => {
+    mockUseSegments.mockReturnValue(['(auth)', 'login']);
+    mockUseAuth.mockReturnValue({
+      session: null,
+      isLoading: true,
+    });
+
+    const RootLayout = require('../app/_layout').default;
+    const screen = render(<RootLayout />);
+
+    expect(screen.getByTestId('root-stack')).toBeTruthy();
+    expect(screen.queryByTestId('loading-spinner-fullscreen')).toBeNull();
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  test('탭 화면에서는 전역 인증 로딩 오버레이를 표시하지 않는다', () => {
+    mockUseSegments.mockReturnValue(['(tabs)', 'me']);
+    mockUseAuth.mockReturnValue({
+      session: { user: { id: 'user-1' } },
+      isLoading: true,
+    });
+
+    const RootLayout = require('../app/_layout').default;
+    const screen = render(<RootLayout />);
+
+    expect(screen.getByTestId('root-stack')).toBeTruthy();
+    expect(screen.queryByTestId('loading-spinner-fullscreen')).toBeNull();
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
   test('만료된 세션은 앱 시작 시 refreshSession으로 갱신한다', async () => {
     mockUseSegments.mockReturnValue(['(auth)']);
     mockUseAuth.mockReturnValue({

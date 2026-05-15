@@ -6,6 +6,7 @@ import {
   TrendingUp,
   TrendingDown,
 } from 'lucide-react';
+import Link from 'next/link';
 
 import type { AdminKpi } from '@/lib/admin-types';
 
@@ -29,11 +30,11 @@ export function AdminKpis({ kpis }: { kpis: AdminKpi[] }) {
               : k.tone === 'danger'
                 ? 'bg-destructive/10 text-destructive'
                 : 'bg-secondary text-foreground';
-        return (
-          <article
-            key={k.label}
-            className="rounded-2xl border border-border bg-card p-5 hover:shadow-md hover:shadow-primary/5 transition"
-          >
+
+        const cardClass =
+          'block rounded-2xl border border-border bg-card p-5 hover:shadow-md hover:shadow-primary/5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2';
+        const content = (
+          <>
             <div className="flex items-center justify-between">
               <div
                 className={`size-10 rounded-xl grid place-items-center ${iconBg}`}
@@ -58,6 +59,16 @@ export function AdminKpis({ kpis }: { kpis: AdminKpi[] }) {
               {k.value}
             </p>
             <p className="text-[11px] text-muted-foreground mt-1">{k.sub}</p>
+          </>
+        );
+
+        return k.href ? (
+          <Link key={k.label} href={k.href} className={cardClass}>
+            {content}
+          </Link>
+        ) : (
+          <article key={k.label} className={cardClass}>
+            {content}
           </article>
         );
       })}

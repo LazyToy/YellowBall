@@ -1,0 +1,31 @@
+{
+  "before": {
+    "id": "3ac97497-b9ee-454e-ab69-57ae22084932",
+    "user_id": "7c053053-88d6-484c-9c46-7f5bd14c3476",
+    "status": "requested",
+    "slot_id": "add8e1eb-7207-4011-a5cc-fae9a007b07b",
+    "user_notes": null,
+    "booking_slots": {
+      "id": "add8e1eb-7207-4011-a5cc-fae9a007b07b",
+      "reserved_count": 1
+    }
+  },
+  "deletedBooking": [
+    {
+      "id": "3ac97497-b9ee-454e-ab69-57ae22084932"
+    }
+  ],
+  "deletedLogs": [],
+  "deletedNotifications": [
+    "536cbb40-c00a-454a-8295-baacc86d381e"
+  ],
+  "slotBeforeFix": {
+    "id": "add8e1eb-7207-4011-a5cc-fae9a007b07b",
+    "reserved_count": 1
+  },
+  "slotFix": {
+    "id": "add8e1eb-7207-4011-a5cc-fae9a007b07b",
+    "reserved_count": 0
+  },
+  "verify": []
+}

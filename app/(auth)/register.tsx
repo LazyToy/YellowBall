@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   BackHandler,
   Pressable,
   StyleSheet,
@@ -11,6 +10,7 @@ import {
 import { useRouter } from 'expo-router';
 
 import { Text } from '@/components/AppText';
+import { FeedbackDialog } from '@/components/FeedbackDialog';
 import { Input } from '@/components/Input';
 import { AppScrollView } from '@/components/MobileUI';
 import { Typography } from '@/components/Typography';
@@ -160,6 +160,8 @@ export default function RegisterScreen() {
     useState<SocialAuthProvider | null>(null);
   const [submitError, setSubmitError] = useState<string>();
   const [successMessage, setSuccessMessage] = useState<string>();
+  const [emailConfirmationVisible, setEmailConfirmationVisible] =
+    useState(false);
 
   const resetForm = useCallback(() => {
     setForm(initialForm);
@@ -179,6 +181,7 @@ export default function RegisterScreen() {
     setSocialProvider(null);
     setSubmitError(undefined);
     setSuccessMessage(undefined);
+    setEmailConfirmationVisible(false);
   }, []);
 
   useResetOnBlur(resetForm);
@@ -413,12 +416,7 @@ export default function RegisterScreen() {
       const message = `${email.trim()} 주소로 인증 이메일을 보냈습니다. 메일함에서 인증을 완료한 뒤 로그인해 주세요.`;
 
       setSuccessMessage(message);
-      Alert.alert(EMAIL_CONFIRMATION_ALERT_TITLE, message, [
-        {
-          text: '확인',
-          onPress: () => router.replace('/(auth)/login'),
-        },
-      ]);
+      setEmailConfirmationVisible(true);
     } catch (error) {
       if (error instanceof Error) {
         setSubmitError(error.message);
@@ -496,6 +494,15 @@ export default function RegisterScreen() {
       contentContainerStyle={styles.container}
       testID="register-scroll-view"
     >
+      <FeedbackDialog
+        visible={emailConfirmationVisible}
+        title={EMAIL_CONFIRMATION_ALERT_TITLE}
+        message={successMessage}
+        onConfirm={() => {
+          setEmailConfirmationVisible(false);
+          router.replace('/(auth)/login');
+        }}
+      />
       {domainMenuOpen ? (
         <Pressable
           accessibilityLabel="이메일 도메인 메뉴 닫기"
@@ -814,12 +821,6 @@ export default function RegisterScreen() {
               {submitError}
             </Typography>
           ) : null}
-          {successMessage ? (
-            <Typography variant="caption" style={styles.successText}>
-              {successMessage}
-            </Typography>
-          ) : null}
-
           <Pressable
             accessibilityLabel="가입하기"
             accessibilityRole="button"

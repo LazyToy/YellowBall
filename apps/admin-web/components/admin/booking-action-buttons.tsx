@@ -14,14 +14,16 @@ interface BookingActionButtonsProps {
   realId: string;
   bookingType: BookingType;
   currentStatus: string;
+  hasCancelRequest?: boolean;
 }
 
 export function BookingActionButtons({
   realId,
   bookingType,
   currentStatus,
+  hasCancelRequest = false,
 }: BookingActionButtonsProps) {
-  const [loading, setLoading] = useState<'approve' | 'reject' | null>(null);
+  const [loading, setLoading] = useState<'approve' | 'reject' | 'cancel' | null>(null);
   const [done, setDone] = useState(false);
   const [feedback, setFeedback] = useState<{
     title: string;
@@ -62,6 +64,32 @@ export function BookingActionButtons({
     }
   };
 
+  const handleCancelRequestApproval = async () => {
+    setLoading('cancel');
+    try {
+      const result = await updateServiceBookingStatus(realId, 'cancelled_admin');
+
+      if (result.success) {
+        setFeedback({ title: '취소 요청을 승인했습니다' });
+        setDone(true);
+      } else {
+        setFeedback({
+          title: '취소 승인 실패',
+          description: result.error,
+          tone: 'danger',
+        });
+      }
+    } catch (err) {
+      setFeedback({
+        title: '오류가 발생했습니다',
+        description: String(err),
+        tone: 'danger',
+      });
+    } finally {
+      setLoading(null);
+    }
+  };
+
   const feedbackDialog = (
     <ActionFeedbackDialog
       open={feedback !== null}
@@ -80,6 +108,27 @@ export function BookingActionButtons({
           처리 완료
         </span>
       </>
+    );
+  }
+
+  if (bookingType === 'service' && hasCancelRequest) {
+    return (
+      <div className="flex items-center gap-1.5 shrink-0">
+        {feedbackDialog}
+        <button
+          onClick={handleCancelRequestApproval}
+          disabled={loading !== null}
+          className="h-9 px-3 rounded-lg border border-destructive/40 text-destructive text-xs font-semibold inline-flex items-center gap-1 hover:bg-destructive/10 disabled:opacity-50 disabled:cursor-not-allowed transition"
+          aria-label="취소 승인"
+        >
+          {loading === 'cancel' ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <X className="size-3.5" />
+          )}
+          취소 승인
+        </button>
+      </div>
     );
   }
 

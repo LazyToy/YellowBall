@@ -198,6 +198,31 @@
 - 실제 Android 설치 앱에서도 메뉴 항목이 한 줄로 정렬된다.
 - 아이콘, 텍스트, badge, chevron이 서로 겹치거나 세로로 쌓이지 않는다.
 
+### 추가 보강: 마이페이지 요약 통계 카드가 실제 기기에서 왼쪽으로 몰림
+
+2026-05-14에 같은 계열의 문제가 마이페이지 요약 통계 카드에서도 다시 발생했다. 웹/에뮬레이터에서는 `스트링 작업`, `데모`, `라켓`, `진행 중` 네 칸이 카드 전체 폭에 고르게 퍼졌지만, 실제 Android 기기에서는 아이콘과 숫자/라벨이 카드 왼쪽으로 몰려 보였다.
+
+처음에는 각 `Pressable`에 `flexBasis`, `width`, `maxWidth`를 주거나 `useWindowDimensions()`로 숫자 폭을 계산하는 방식도 시도할 수 있다. 하지만 실제 기기에서는 `Pressable` 자체가 접근성/터치 bounds 계산 과정에서 내부 콘텐츠 폭만큼 접히는 경우가 있어, 보이는 칸이 여전히 왼쪽으로 붙을 수 있다.
+
+이 경우에는 통계 칸을 다음처럼 분리하는 편이 안정적이다.
+
+- 바깥 통계 카드는 `width: '100%'`, `flexDirection: 'row'`, `overflow: 'hidden'`을 유지한다.
+- 각 통계 칸은 `View`로 만들고 `flexBasis: '25%'`, `width: '25%'`, `maxWidth: '25%'`, `flexGrow: 0`, `flexShrink: 0`, `minWidth: 0`을 지정한다.
+- 실제 터치는 칸 내부의 `Pressable`이 맡되, `StyleSheet.absoluteFillObject`로 전체 칸을 덮게 한다.
+- 값/라벨 텍스트에는 `width: '100%'`, `textAlign: 'center'`, `includeFontPadding: false`, 명시적 `lineHeight`를 둔다.
+
+이번 수정은 `app/(tabs)/me.tsx`의 통계 카드에 적용했다. 실제 Galaxy 기기에서 `uiautomator dump`로 다음 bounds를 확인했다.
+
+- `me-stats-grid [53,782][1028,1040]`
+- `me-stat-wrench-column [87,816][313,1006]`
+- `me-stat-sparkles-column [314,816][541,1006]`
+- `me-stat-package-column [541,816][768,1006]`
+- `me-stat-calendar-check-column [767,816][993,1006]`
+
+즉, 네 개 시각 칸이 카드 내부에 거의 같은 폭으로 분배되었다. 이 문제는 새 원인이라기보다 위 마이페이지 메뉴 케이스와 같은 `Pressable`/row bounds 계열이며, “보이는 표면 또는 칸은 `View`가 담당하고, `Pressable`은 absolute 터치 레이어로 분리한다”는 규칙을 보강하는 사례다.
+
+같은 작업에서 footer 순서도 함께 조정했다. `로그아웃` 버튼이 `YellowBall v1.0.0 · MVP` 위에 오도록 렌더 순서를 바꾸고, 실제 기기에서 `me-footer-logout [56,1443][1026,1527]`, `me-footer-version [390,1560][690,1599]`로 버튼이 버전 문구보다 위에 있음을 확인했다.
+
 ## 5. 검증 방법
 
 실제 Android 문제는 웹 렌더링만으로는 확인할 수 없다. 다음 순서로 확인해야 한다.
@@ -213,6 +238,93 @@
 - 로그인/소셜 로그인/회원가입/샵/마이페이지 관련 targeted Jest 테스트 통과
 - `npx tsc --noEmit` 통과
 - `npm run lint` 통과
+
+### Expo Go/Metro가 한 번에 안 올라갈 때 빠른 복구 절차
+
+최근 실제 기기 검증 중 Expo Go가 바로 앱 화면으로 진입하지 않고 다음 상태로 멈추는 일이 반복되었다.
+
+- Expo Go의 `Something went wrong.` 화면으로 이동한다.
+- error log에 `Uncaught Error: java.io.IOException: Failed to download remote update`가 보인다.
+- `npx expo start --host localhost --port <port>` 실행 시 네트워크 제한 환경에서 `TypeError: fetch failed`가 난다.
+- `npx expo start --offline --localhost --port <port>`처럼 실행하면 `Specify at most one of: --offline, --host, --tunnel, --lan, --localhost` 에러가 난다.
+- `adb`가 PATH에 없어 `adb : 'adb' 용어가 ... 인식되지 않습니다`가 나온다.
+- Metro를 `Start-Process`로만 띄우면 프로세스가 금방 종료되어 `Waiting on http://localhost:<port>`가 보였는데도 `http://127.0.0.1:<port>/status`가 열리지 않는다.
+
+이때는 아래 순서대로 복구한다.
+
+1. 먼저 Android SDK의 직접 경로로 기기 연결을 확인한다.
+
+   ```powershell
+   & 'C:\Users\Seeya\AppData\Local\Android\Sdk\platform-tools\adb.exe' devices -l
+   ```
+
+2. 네트워크가 막힌 환경에서는 dependency validation이 외부 API를 조회하다 실패할 수 있으므로 `--offline`을 쓴다. 단, `--offline`과 `--localhost`/`--host`는 같이 쓰지 않는다.
+
+   ```powershell
+   npx expo start --offline --port 8119
+   ```
+
+3. Metro가 실제로 살아 있는지 확인한다. `packager-status:running`이 나와야 한다.
+
+   ```powershell
+   Invoke-WebRequest -Uri http://127.0.0.1:8119/status -UseBasicParsing
+   ```
+
+4. 실제 기기에서 로컬 Metro를 보게 USB reverse를 건다.
+
+   ```powershell
+   & 'C:\Users\Seeya\AppData\Local\Android\Sdk\platform-tools\adb.exe' reverse tcp:8119 tcp:8119
+   ```
+
+5. Expo Go를 직접 deep link로 연다.
+
+   ```powershell
+   & 'C:\Users\Seeya\AppData\Local\Android\Sdk\platform-tools\adb.exe' shell am start -a android.intent.action.VIEW -d exp://127.0.0.1:8119 host.exp.exponent
+   ```
+
+6. Expo Go가 에러 화면에 머물면 error log를 확인한다. `Failed to download remote update`이면 대개 Expo Go가 Metro에 붙지 못했거나 이전 실패 상태를 보고 있는 것이다. 이때는 `adb reverse`를 다시 걸고 reload 버튼을 누르거나, Expo Go를 다시 deep link로 연다.
+
+7. 수정 내용이 반영되지 않은 것처럼 보이면 빈 포트와 `--clear`를 사용해 새 번들을 만든다.
+
+   ```powershell
+   npx expo start --offline --clear --port 8119
+   ```
+
+8. 자동화 검증 중에는 Metro를 별도 창으로 띄운 뒤 종료되는지 확인하기 어렵다. 한 번의 PowerShell 작업 안에서 `Start-Job`으로 Metro를 띄우고, `adb reverse`, 앱 실행, `uiautomator dump`, `screencap`까지 끝낸 뒤 `Stop-Job`으로 정리하는 방식이 안정적이었다.
+
+   ```powershell
+   $adb = 'C:\Users\Seeya\AppData\Local\Android\Sdk\platform-tools\adb.exe'
+   $port = 8119
+   $job = Start-Job -ScriptBlock {
+     param($wd, $p)
+     Set-Location $wd
+     npx expo start --offline --port $p
+   } -ArgumentList (Get-Location).Path, $port
+
+   Start-Sleep -Seconds 25
+   Invoke-WebRequest -Uri "http://127.0.0.1:$port/status" -UseBasicParsing
+   & $adb reverse "tcp:$port" "tcp:$port"
+   & $adb shell am start -a android.intent.action.VIEW -d "exp://127.0.0.1:$port" host.exp.exponent
+
+   # 검증 후 정리
+   Stop-Job -Job $job
+   Remove-Job -Job $job
+   ```
+
+9. 실제 화면이 최신 번들인지 확인할 때는 스크린샷만 보지 말고 testID bounds도 같이 확인한다.
+
+   ```powershell
+   & 'C:\Users\Seeya\AppData\Local\Android\Sdk\platform-tools\adb.exe' shell uiautomator dump /sdcard/window.xml
+   & 'C:\Users\Seeya\AppData\Local\Android\Sdk\platform-tools\adb.exe' pull /sdcard/window.xml window.xml
+   ```
+
+빠른 판단 기준:
+
+- `fetch failed`: 네트워크 제한에서 Expo CLI가 외부 dependency 정보를 조회하려다 실패한 것일 수 있다. `--offline`으로 다시 시작한다.
+- `Specify at most one of...`: `--offline`과 `--localhost`/`--host`를 같이 쓴 것이다. `--offline --port <port>`만 사용한다.
+- `Failed to download remote update`: 기기가 Metro에 붙지 못했거나 이전 실패 화면을 보고 있다. `adb reverse`, deep link 재실행, reload 순서로 복구한다.
+- `/status` 접속 실패: Metro 프로세스가 실제로 살아 있지 않다. 새 포트로 다시 띄우고 `/status`를 먼저 확인한다.
+- 화면이 예전 UI: Expo Go가 이전 번들을 보고 있을 수 있다. `--clear`, 새 포트, 앱 reload/deep link 재실행을 같이 사용한다.
 
 ## 6. 남은 이슈: 메인페이지 배너, 예약 바로가기, 샵 카테고리 깨짐
 

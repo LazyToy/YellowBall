@@ -316,6 +316,7 @@ describe('HomeScreen native layout', () => {
     fireEvent.press(screen.getByTestId('home-racket-manage-link'));
 
     expect(mockPush).toHaveBeenCalledWith('/rackets');
+    expect(mockPush).toHaveBeenCalledWith('/racket-list');
     expect(mockPush).toHaveBeenCalledTimes(2);
   });
 
@@ -436,22 +437,26 @@ describe('HomeScreen native layout', () => {
     ).toBe(136);
   });
 
-  test('TopBar shows only a lowered notification icon without brand or circular badges', () => {
+  test('TopBar shows an inline notification icon without brand or extra top spacing', () => {
     const { TopBar } = require('../src/components/MobileUI');
 
     const screen = render(
       <TopBar nickname="Tester" storeName="YellowBall" />,
     );
+    const topBar = screen.getByTestId('topbar-container');
     const notificationButton = screen.getByTestId(
       'topbar-notification-button',
     );
+    const topBarStyle = flattenStyle(topBar.props.style);
     const buttonStyle = flattenStyle(notificationButton.props.style);
     const tree = JSON.stringify(screen.toJSON());
 
     expect(screen.queryByText('YellowBall')).toBeNull();
     expect(screen.queryByText('T')).toBeNull();
     expect(tree).not.toContain('#de3b3d');
+    expect(topBarStyle.paddingTop).toBeUndefined();
+    expect(topBarStyle.paddingHorizontal).toBeUndefined();
     expect(buttonStyle.backgroundColor).toBe('transparent');
-    expect(buttonStyle.marginTop).toBe(theme.spacing[2]);
+    expect(buttonStyle.marginTop).toBeUndefined();
   });
 });

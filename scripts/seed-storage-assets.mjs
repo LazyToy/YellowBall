@@ -44,21 +44,31 @@ const seedUploads = readdirSync(assetsDir)
   }));
 
 const brandUploads = [
-  { source: join(rootDir, 'assets', 'icon.png'), path: 'brand/icon.png' },
   {
-    source: join(rootDir, 'assets', 'adaptive-icon.png'),
-    path: 'brand/adaptive-icon.png',
+    source: join(rootDir, 'assets', 'brand', 'yellowball-logo.png'),
+    path: 'brand/yellowball-logo.png',
   },
   {
-    source: join(rootDir, 'assets', 'splash-icon.png'),
-    path: 'brand/splash-icon.png',
+    source: join(rootDir, 'assets', 'brand', 'yellowball-logo-transparent.png'),
+    path: 'brand/yellowball-logo-transparent.png',
+  },
+  {
+    source: join(rootDir, 'assets', 'brand', 'yellowball-adaptive-icon.png'),
+    path: 'brand/yellowball-adaptive-icon.png',
+  },
+  {
+    source: join(rootDir, 'assets', 'brand', 'yellowball-splash-icon.png'),
+    path: 'brand/yellowball-splash-icon.png',
   },
 ];
 
 for (const upload of [...seedUploads, ...brandUploads]) {
   const path = upload.path;
   const publicUrl = `${supabaseUrl}/storage/v1/object/public/app-assets/${path}`;
-  const existing = await fetch(publicUrl, { method: 'HEAD' });
+  const isBrandAsset = path.startsWith('brand/');
+  const existing = isBrandAsset
+    ? { ok: false }
+    : await fetch(publicUrl, { method: 'HEAD' });
 
   if (existing.ok) {
     console.log(`exists app-assets/${path}`);
@@ -70,12 +80,14 @@ for (const upload of [...seedUploads, ...brandUploads]) {
     .from('app-assets')
     .upload(path, bytes, {
       contentType: 'image/png',
-      upsert: false,
+      upsert: isBrandAsset,
     });
 
   if (error && !/already exists/i.test(error.message)) {
     throw new Error(`Failed to upload ${path}: ${error.message}`);
   }
 
-  console.log(`${error ? 'exists' : 'uploaded'} app-assets/${path}`);
+  console.log(
+    `${error ? 'exists' : isBrandAsset ? 'upserted' : 'uploaded'} app-assets/${path}`,
+  );
 }

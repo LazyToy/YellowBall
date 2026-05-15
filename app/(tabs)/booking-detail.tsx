@@ -12,7 +12,13 @@ import { Typography } from '@/components/Typography';
 import { lightColors, theme } from '@/constants/theme';
 import { useOperationPolicySettings } from '@/hooks/useOperationPolicySettings';
 import { cancelBooking, getBookingDetail } from '@/services/bookingService';
-import type { ServiceBooking } from '@/types/database';
+import { getDemoBookingDetail } from '@/services/demoBookingService';
+import type {
+  BookingSlot,
+  DemoBooking,
+  DemoRacket,
+  ServiceBooking,
+} from '@/types/database';
 import {
   getBookingAddressLabel,
   getBookingDeliveryMethodLabel,
@@ -22,6 +28,8 @@ import {
 } from '@/utils/bookingDisplay';
 import {
   getServiceBookingWorkStatus,
+  demoBookingStatusLabels,
+  demoBookingStatusVariant,
   serviceBookingStatusLabels,
   serviceBookingStatusVariant,
   serviceBookingTimeline,
@@ -35,10 +43,47 @@ import { formatKstDateTime } from '@/utils/kstDateTime';
 
 const formatDateTime = (value: string) => formatKstDateTime(value);
 
+type DemoBookingDetail = DemoBooking & {
+  booking_slots?: Pick<BookingSlot, 'start_time' | 'end_time'> | null;
+  demo_rackets?: Pick<
+    DemoRacket,
+    'brand' | 'model' | 'grip_size' | 'weight' | 'head_size'
+  > | null;
+};
+
+const joinParts = (...parts: (string | number | null | undefined)[]) =>
+  parts.filter((part) => part !== null && part !== undefined && part !== '').join(' ');
+
+const getDemoRacketLabel = (booking: DemoBookingDetail) => {
+  const label = joinParts(
+    booking.demo_rackets?.brand,
+    booking.demo_rackets?.model,
+  );
+
+  return label || `라켓 ${booking.demo_racket_id.slice(0, 8)}`;
+};
+
+const getDemoRacketSpecLabel = (booking: DemoBookingDetail) => {
+  const spec = [
+    booking.demo_rackets?.weight ? `${booking.demo_rackets.weight}g` : null,
+    booking.demo_rackets?.grip_size,
+    booking.demo_rackets?.head_size
+      ? `헤드 ${booking.demo_rackets.head_size}`
+      : null,
+  ].filter(Boolean);
+
+  return spec.length > 0 ? spec.join(' · ') : '-';
+};
+
+const getDemoBookingStartLabel = (booking: DemoBookingDetail) =>
+  formatDateTime(booking.booking_slots?.start_time ?? booking.start_time);
+
 export default function BookingDetailScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id?: string }>();
+  const { id, type } = useLocalSearchParams<{ id?: string; type?: string }>();
+  const bookingType = type === 'demo' ? 'demo' : 'service';
   const [booking, setBooking] = useState<ServiceBooking | null>(null);
+  const [demoBooking, setDemoBooking] = useState<DemoBookingDetail | null>(null);
   const [message, setMessage] = useState<string>();
   const [isLoading, setIsLoading] = useState(true);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -58,13 +103,21 @@ export default function BookingDetailScreen() {
 
     try {
       setIsLoading(true);
-      setBooking(await getBookingDetail(id));
+      setMessage(undefined);
+      setBooking(null);
+      setDemoBooking(null);
+
+      if (bookingType === 'demo') {
+        setDemoBooking(await getDemoBookingDetail(id));
+      } else {
+        setBooking(await getBookingDetail(id));
+      }
     } catch {
       setMessage('예약 상세를 불러오지 못했습니다.');
     } finally {
       setIsLoading(false);
     }
-  }, [id]);
+  }, [bookingType, id]);
 
   useEffect(() => {
     loadBooking();
@@ -99,7 +152,7 @@ export default function BookingDetailScreen() {
     return <LoadingSpinner fullScreen label="예약 상세 불러오는 중" />;
   }
 
-  if (!booking) {
+  if (!booking && !demoBooking) {
     return (
       <View style={styles.container}>
         <View style={styles.titleRow}>
@@ -110,6 +163,77 @@ export default function BookingDetailScreen() {
           {message ?? '예약을 찾지 못했습니다.'}
         </Typography>
       </View>
+    );
+  }
+
+  if (demoBooking) {
+    return (
+      <RefreshableScrollView contentContainerStyle={styles.container}>
+        <View style={styles.header}>
+          <View style={styles.flex}>
+            <View style={styles.titleRow}>
+              <BackButton onPress={() => router.back()} />
+              <Typography variant="h1">시타 예약 상세</Typography>
+            </View>
+            <Typography variant="caption" style={styles.muted}>
+              #{demoBooking.id.slice(0, 8)}
+            </Typography>
+          </View>
+          <Badge variant={demoBookingStatusVariant(demoBooking.status)}>
+            {demoBookingStatusLabels[demoBooking.status]}
+          </Badge>
+        </View>
+
+        <View style={styles.card}>
+          <Typography variant="h2">시타 정보</Typography>
+          <Typography variant="body">
+            라켓 {getDemoRacketLabel(demoBooking)}
+          </Typography>
+          <Typography variant="body">
+            스펙 {getDemoRacketSpecLabel(demoBooking)}
+          </Typography>
+          <Typography variant="body">
+            대여 예정 시간 {getDemoBookingStartLabel(demoBooking)}
+          </Typography>
+          <Typography variant="body">
+            반납 예정 시간 {formatDateTime(demoBooking.expected_return_time)}
+          </Typography>
+          {demoBooking.actual_return_time ? (
+            <Typography variant="body">
+              실제 반납 시간 {formatDateTime(demoBooking.actual_return_time)}
+            </Typography>
+          ) : null}
+          <Typography variant="caption" style={styles.muted}>
+            접수 {formatDateTime(demoBooking.created_at)}
+          </Typography>
+          <Typography variant="caption" style={styles.muted}>
+            최종 수정 {formatDateTime(demoBooking.updated_at)}
+          </Typography>
+        </View>
+
+        <View style={styles.card}>
+          <Typography variant="h2">상태</Typography>
+          <Badge variant={demoBookingStatusVariant(demoBooking.status)}>
+            {demoBookingStatusLabels[demoBooking.status]}
+          </Badge>
+        </View>
+
+        <View style={styles.card}>
+          <Typography variant="h2">메모</Typography>
+          <Typography variant="caption" style={styles.muted}>
+            사용자 메모: {demoBooking.user_notes || '-'}
+          </Typography>
+          <Typography variant="caption" style={styles.muted}>
+            관리자 메모: {demoBooking.admin_notes || '-'}
+          </Typography>
+        </View>
+
+        {message ? (
+          <Typography accessibilityRole="alert" variant="caption" style={styles.muted}>
+            {message}
+          </Typography>
+        ) : null}
+      </RefreshableScrollView>
     );
   }
 

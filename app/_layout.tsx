@@ -52,6 +52,8 @@ function RootNavigator() {
   const routeSegments = segments as unknown as string[];
   const isAuthCallback =
     rootSegment === 'auth' && routeSegments[1] === 'callback';
+  const shouldShowGlobalLoading =
+    isLoading && rootSegment !== '(auth)' && rootSegment !== '(tabs)';
 
   useEffect(() => {
     let isMounted = true;
@@ -124,7 +126,7 @@ function RootNavigator() {
         <Stack.Screen name="auth/callback" />
         <Stack.Screen name="(tabs)" />
       </Stack>
-      {isLoading ? (
+      {shouldShowGlobalLoading ? (
         <LoadingSpinner
           fullScreen
           label="인증 상태 확인 중"

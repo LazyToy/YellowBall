@@ -30,6 +30,12 @@ import {
   type ShopScheduleRow,
   type StoreSettings,
 } from './super-admin-data';
+import {
+  COMPLETED_STATUS_LOCK_MESSAGE,
+  isBookingStatusLockedAfterCompletion,
+  isOrderStatusLockedAfterCompletion,
+  type BookingStatusLockType,
+} from './admin-status-lock';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const serviceRoleKey = process.env.NEXT_SUPABASE_SERVICE_ROLE_KEY!;
@@ -59,7 +65,6 @@ async function patchRow(table: string, id: string, idField: string, payload: Rec
     throw new Error(`DB 업데이트 실패 (${table}): ${response.status} ${text}`);
   }
 
-  return response.json();
 }
 
 async function fetchRows<T>(table: string, params: Record<string, string>) {
@@ -85,7 +90,41 @@ async function fetchRows<T>(table: string, params: Record<string, string>) {
     throw new Error(`DB 조회 실패 (${table}): ${response.status} ${text}`);
   }
 
-  return [] as T[];
+  return (await response.json()) as T[];
+}
+
+async function getCurrentStatus(table: string, id: string) {
+  const [row] = await fetchRows<{ status: string }>(table, {
+    select: 'status',
+    id: `eq.${id}`,
+    limit: '1',
+  });
+
+  if (!row) {
+    throw new Error('상태를 변경할 대상을 찾을 수 없습니다.');
+  }
+
+  return row.status;
+}
+
+async function assertBookingStatusCanChange(
+  table: string,
+  bookingId: string,
+  bookingType: BookingStatusLockType,
+) {
+  const currentStatus = await getCurrentStatus(table, bookingId);
+
+  if (isBookingStatusLockedAfterCompletion(bookingType, currentStatus)) {
+    throw new Error(COMPLETED_STATUS_LOCK_MESSAGE);
+  }
+}
+
+async function assertOrderStatusCanChange(orderId: string) {
+  const currentStatus = await getCurrentStatus('shop_orders', orderId);
+
+  if (isOrderStatusLockedAfterCompletion(currentStatus)) {
+    throw new Error(COMPLETED_STATUS_LOCK_MESSAGE);
+  }
 }
 
 async function upsertRow<T>(table: string, payload: Record<string, unknown>, conflictKey: string) {
@@ -407,11 +446,14 @@ function sanitizeScheduleRows(rows: ShopScheduleRow[]) {
 export async function updateServiceBookingStatus(bookingId: string, newStatus: string) {
   try {
     await requireAdminPermission('can_manage_bookings');
+    await assertBookingStatusCanChange('service_bookings', bookingId, 'service');
     await patchRow('service_bookings', bookingId, 'id', {
       status: newStatus,
       updated_at: new Date().toISOString(),
     });
     revalidatePath('/admin/bookings');
+    revalidatePath(`/admin/bookings/service/${bookingId}`);
+    revalidatePath('/admin/orders');
     revalidatePath('/admin');
     return { success: true };
   } catch (error) {
@@ -426,6 +468,7 @@ export async function updateServiceBookingStatus(bookingId: string, newStatus: s
 export async function updateDemoBookingStatus(bookingId: string, newStatus: string) {
   try {
     await requireAdminPermission('can_manage_bookings');
+    await assertBookingStatusCanChange('demo_bookings', bookingId, 'demo');
     await patchRow('demo_bookings', bookingId, 'id', {
       status: newStatus,
       updated_at: new Date().toISOString(),
@@ -485,6 +528,7 @@ export async function toggleProductActive(productId: string, isActive: boolean) 
 export async function updateOrderStatus(orderId: string, newStatus: string) {
   try {
     await requireAdminPermission('can_manage_orders');
+    await assertOrderStatusCanChange(orderId);
     await patchRow('shop_orders', orderId, 'id', {
       status: newStatus,
       updated_at: new Date().toISOString(),

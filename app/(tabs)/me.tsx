@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { Button } from '@/components/Button';
 import { Text } from '@/components/AppText';
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
+import { AuthLoadingOverlay } from '@/components/AuthLoadingOverlay';
 import { FeedbackDialog } from '@/components/FeedbackDialog';
 import {
   AppScrollView,
@@ -317,30 +318,17 @@ export default function MeScreen() {
       items: group.items.filter((item) => !item.menuId || menuSettings[item.menuId]),
     }))
     .filter((group) => group.items.length > 0);
+
   return (
-    <AppScrollView>
-      <FeedbackDialog
-        visible={successDialog}
-        title="프로필이 저장되었습니다"
-        message="확인을 누르면 내 정보 화면을 확인할 수 있습니다."
-        onConfirm={() => setSuccessDialog(false)}
-      />
-      <PageHeader
-        title="마이"
-        right={
-          <Pressable
-            accessibilityLabel="설정"
-            accessibilityRole="button"
-            onPress={() => router.push('/notification-settings')}
-            style={({ pressed }) => [
-              styles.settingsButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            <AppIcon name="settings" size={20} />
-          </Pressable>
-        }
-      />
+    <View style={styles.screen}>
+      <AppScrollView>
+        <FeedbackDialog
+          visible={successDialog}
+          title="프로필이 저장되었습니다"
+          message="확인을 누르면 내 정보 화면을 확인할 수 있습니다."
+          onConfirm={() => setSuccessDialog(false)}
+        />
+        <PageHeader title="마이" />
 
       <View style={styles.section}>
         <Card style={styles.profileCard}>
@@ -397,16 +385,11 @@ export default function MeScreen() {
 
       <View style={styles.section}>
         <Card style={styles.statsGrid} testID="me-stats-grid">
-          {stats.map((item, index) => (
-            <Pressable
-              accessibilityLabel={item.label}
-              accessibilityRole="button"
+          {stats.map((item) => (
+            <View
               key={item.label}
-              style={({ pressed }) => [
-                styles.statItem,
-                pressed && styles.pressed,
-              ]}
-              testID={`me-stat-${item.icon}`}
+              style={styles.statItem}
+              testID={`me-stat-${item.icon}-column`}
             >
               <AppIcon
                 color={lightColors.primary.hex}
@@ -417,7 +400,17 @@ export default function MeScreen() {
               <Text numberOfLines={1} style={styles.statLabel}>
                 {item.label}
               </Text>
-            </Pressable>
+              <Pressable
+                accessibilityLabel={item.label}
+                accessibilityRole="button"
+                onPress={() => undefined}
+                style={({ pressed }) => [
+                  styles.statPressable,
+                  pressed && styles.pressed,
+                ]}
+                testID={`me-stat-${item.icon}`}
+              />
+            </View>
           ))}
         </Card>
       </View>
@@ -492,8 +485,8 @@ export default function MeScreen() {
               key={racket.name}
               onPress={() =>
                 router.push({
-                  pathname: '/rackets',
-                  params: { editId: racket.id },
+                  pathname: '/racket-detail',
+                  params: { from: '/me', id: racket.id },
                 })
               }
               style={styles.racketCard}
@@ -570,19 +563,31 @@ export default function MeScreen() {
         <Text style={styles.successText}>{successMessage}</Text>
       ) : null}
 
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>YellowBall v1.0.0 · MVP</Text>
+      <View style={styles.footer} testID="me-footer">
         <Button
           accessibilityLabel="로그아웃"
           loading={isSigningOut}
           onPress={handleSignOut}
           size="sm"
+          testID="me-footer-logout"
           variant="outline"
         >
           로그아웃
         </Button>
+        <Text style={styles.footerText} testID="me-footer-version">
+          YellowBall v1.0.0 · MVP
+        </Text>
       </View>
-    </AppScrollView>
+      </AppScrollView>
+      {isSigningOut ? (
+        <AuthLoadingOverlay
+          caption="안전하게 세션을 정리하고 있습니다."
+          label="로그아웃 중"
+          panelTestID="me-signout-loading-panel"
+          testID="me-signout-loading"
+        />
+      ) : null}
+    </View>
   );
 }
 
@@ -598,16 +603,13 @@ function ProfileMetric({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    backgroundColor: lightColors.background.hex,
+    flex: 1,
+  },
   section: {
     gap: theme.spacing[3],
     paddingHorizontal: screenHorizontalPadding,
-  },
-  settingsButton: {
-    alignItems: 'center',
-    borderRadius: 999,
-    height: 40,
-    justifyContent: 'center',
-    width: 40,
   },
   profileCard: {
     backgroundColor: lightColors.primary.hex,
@@ -720,7 +722,7 @@ const styles = StyleSheet.create({
   },
   statsGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     overflow: 'hidden',
     padding: statsGridPadding,
     width: '100%',
@@ -728,22 +730,41 @@ const styles = StyleSheet.create({
   statItem: {
     alignItems: 'center',
     borderRadius: theme.borderRadius.md,
-    flex: 1,
+    flexBasis: '25%',
+    flexGrow: 0,
+    flexShrink: 0,
+    justifyContent: 'center',
+    maxWidth: '25%',
+    minHeight: 68,
     minWidth: 0,
     paddingVertical: theme.spacing[2],
+    position: 'relative',
+    width: '25%',
+  },
+  statPressable: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: theme.borderRadius.md,
   },
   statValue: {
     color: lightColors.foreground.hex,
     fontFamily: theme.typography.fontFamily.display,
     fontSize: 16,
     fontWeight: theme.typography.fontWeight.bold,
+    includeFontPadding: false,
+    lineHeight: 20,
     marginTop: theme.spacing[1],
+    textAlign: 'center',
+    width: '100%',
   },
   statLabel: {
     color: lightColors.mutedForeground.hex,
     fontFamily: theme.typography.fontFamily.body,
     fontSize: 10,
+    includeFontPadding: false,
+    lineHeight: 14,
     maxWidth: '100%',
+    textAlign: 'center',
+    width: '100%',
   },
   linkText: {
     color: lightColors.primary.hex,

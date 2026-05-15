@@ -1,26 +1,26 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   FlatList,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   View,
 } from 'react-native';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 
 import { Text, TextInput } from '@/components/AppText';
+import { usePageKeyboardAutoScrollLock } from '@/components/PageRefresh';
 import { lightColors, theme } from '@/constants/theme';
 import type { StringCatalogItem } from '@/types/database';
 
 import { Typography } from './Typography';
 
 type StringPickerProps = {
-  /** 레이블 (예: "메인 스트링") */
   label: string;
-  /** 선택된 스트링 ID */
   selectedId: string | null;
-  /** 사용 가능한 스트링 목록 */
   strings: StringCatalogItem[];
-  /** 스트링 선택 콜백 */
   onSelect: (item: StringCatalogItem) => void;
 };
 
@@ -32,6 +32,13 @@ export function StringPicker({
 }: StringPickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  usePageKeyboardAutoScrollLock(open);
+  const insets = React.useContext(SafeAreaInsetsContext) ?? {
+    bottom: 0,
+    left: 0,
+    right: 0,
+    top: 0,
+  };
 
   const selectedItem = useMemo(
     () => strings.find((s) => s.id === selectedId) ?? null,
@@ -41,6 +48,7 @@ export function StringPicker({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return strings;
+
     return strings.filter(
       (s) =>
         s.brand.toLowerCase().includes(q) || s.name.toLowerCase().includes(q),
@@ -62,100 +70,141 @@ export function StringPicker({
         {label}
       </Typography>
 
-      {/* 선택 버튼 */}
       <Pressable
         accessibilityLabel={`${label} 선택`}
         accessibilityRole="button"
         onPress={() => setOpen(true)}
-        style={({ pressed }) => [styles.trigger, pressed && styles.pressed]}
+        style={({ pressed }) => [
+          styles.triggerPressable,
+          pressed && styles.pressed,
+        ]}
+        testID="string-picker-hit-target"
       >
-        {selectedItem ? (
-          <View>
-            <Text style={styles.selectedMain}>
-              {selectedItem.brand} {selectedItem.name}
-            </Text>
-            {selectedItem.gauge ? (
-              <Text style={styles.selectedSub}>{selectedItem.gauge}</Text>
-            ) : null}
+        <View style={styles.triggerSurface} testID="string-picker-surface">
+          <View
+            pointerEvents="none"
+            style={styles.valueRow}
+            testID="string-picker-value-row"
+          >
+            {selectedItem ? (
+              <View style={styles.selectedTextBox}>
+                <Text numberOfLines={1} style={styles.selectedMain}>
+                  {selectedItem.brand} {selectedItem.name}
+                </Text>
+                {selectedItem.gauge ? (
+                  <Text numberOfLines={1} style={styles.selectedSub}>
+                    {selectedItem.gauge}
+                  </Text>
+                ) : null}
+              </View>
+            ) : (
+              <Text numberOfLines={1} style={styles.placeholder}>
+                스트링을 선택하세요
+              </Text>
+            )}
+            <Text style={styles.chevron}>›</Text>
           </View>
-        ) : (
-          <Text style={styles.placeholder}>스트링을 선택하세요</Text>
-        )}
-        <Text style={styles.chevron}>›</Text>
+        </View>
       </Pressable>
 
-      {/* 선택 모달 */}
       <Modal
         animationType="slide"
+        navigationBarTranslucent
         onRequestClose={() => setOpen(false)}
+        statusBarTranslucent
         transparent
         visible={open}
       >
-        <Pressable
-          accessibilityLabel="스트링 선택 닫기"
-          onPress={() => setOpen(false)}
-          style={styles.backdrop}
-        />
-        <View style={styles.sheet}>
-          <View style={styles.sheetHeader}>
-            <Typography variant="h2">{label} 선택</Typography>
-            <Pressable
-              accessibilityLabel="닫기"
-              onPress={() => setOpen(false)}
-              style={styles.closeBtn}
+        <View style={styles.modalRoot}>
+          <Pressable
+            accessibilityLabel="스트링 선택 닫기"
+            onPress={() => setOpen(false)}
+            style={styles.outsideDismiss}
+            testID="string-picker-modal-outside"
+          />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            pointerEvents="box-none"
+            style={styles.keyboardFrame}
+            testID="string-picker-keyboard-frame"
+          >
+            <View
+              style={[
+                styles.sheet,
+                {
+                  paddingBottom: Math.max(insets.bottom, theme.spacing[5]),
+                  paddingTop: Math.max(insets.top + theme.spacing[3], theme.spacing[5]),
+                },
+              ]}
+              testID="string-picker-sheet"
             >
-              <Text style={styles.closeBtnText}>✕</Text>
-            </Pressable>
-          </View>
+              <View style={styles.sheetHeader}>
+                <Typography variant="h2">{label} 선택</Typography>
+                <Pressable
+                  accessibilityLabel="닫기"
+                  onPress={() => setOpen(false)}
+                  style={styles.closeBtn}
+                >
+                  <Text style={styles.closeBtnText}>×</Text>
+                </Pressable>
+              </View>
 
-          {/* 검색창 */}
-          <TextInput
-            accessibilityLabel="스트링 검색"
-            autoFocus
-            onChangeText={setQuery}
-            placeholder="브랜드 또는 모델 검색..."
-            placeholderTextColor={lightColors.mutedForeground.hex}
-            style={styles.search}
-            value={query}
-          />
+              <TextInput
+                accessibilityLabel="스트링 검색"
+                onChangeText={setQuery}
+                placeholder="브랜드 또는 모델 검색..."
+                placeholderTextColor={lightColors.mutedForeground.hex}
+                style={styles.search}
+                value={query}
+              />
 
-          {/* 목록 */}
-          <FlatList
-            data={filtered}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <Pressable
-                accessibilityLabel={`${item.brand} ${item.name} 선택`}
-                accessibilityRole="button"
-                onPress={() => handleSelect(item)}
-                style={({ pressed }) => [
-                  styles.option,
-                  item.id === selectedId && styles.optionSelected,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <View style={styles.optionInfo}>
-                  <Text style={styles.optionBrand}>{item.brand}</Text>
-                  <Text style={styles.optionName}>{item.name}</Text>
-                  {item.gauge ? (
-                    <Text style={styles.optionMeta}>{item.gauge}</Text>
-                  ) : null}
-                </View>
-                {item.id === selectedId ? (
-                  <Text style={styles.checkmark}>✓</Text>
-                ) : null}
-              </Pressable>
-            )}
-            ListEmptyComponent={
-              <Typography
-                variant="caption"
-                style={[styles.emptyText, styles.muted]}
-              >
-                검색 결과가 없습니다.
-              </Typography>
-            }
-            contentContainerStyle={styles.listContent}
-          />
+              <FlatList
+                contentContainerStyle={styles.listContent}
+                data={filtered}
+                keyboardShouldPersistTaps="handled"
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <Pressable
+                    accessibilityLabel={`${item.brand} ${item.name} 선택`}
+                    accessibilityRole="button"
+                    onPress={() => handleSelect(item)}
+                    style={({ pressed }) => [
+                      styles.option,
+                      item.id === selectedId && styles.optionSelected,
+                      pressed && styles.pressed,
+                    ]}
+                    testID={`string-picker-option-${item.id}`}
+                  >
+                    <View style={styles.optionInfo}>
+                      <Text style={styles.optionBrand}>{item.brand}</Text>
+                      <Text style={styles.optionName}>{item.name}</Text>
+                      {item.gauge ? (
+                        <Text style={styles.optionMeta}>{item.gauge}</Text>
+                      ) : null}
+                    </View>
+                    {item.id === selectedId ? (
+                      <Text style={styles.checkmark}>✓</Text>
+                    ) : null}
+                  </Pressable>
+                )}
+                ListEmptyComponent={
+                  <Typography
+                    variant="caption"
+                    style={[styles.emptyText, styles.muted]}
+                  >
+                    검색 결과가 없습니다.
+                  </Typography>
+                }
+                showsVerticalScrollIndicator={false}
+                style={styles.list}
+              />
+              <View
+                pointerEvents="none"
+                style={styles.sheetBottomMask}
+                testID="string-picker-sheet-bottom-mask"
+              />
+            </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
     </View>
@@ -170,7 +219,11 @@ const styles = StyleSheet.create({
     color: lightColors.mutedForeground.hex,
     fontWeight: theme.typography.fontWeight.semibold,
   },
-  trigger: {
+  triggerPressable: {
+    borderRadius: theme.borderRadius.md,
+    width: '100%',
+  },
+  triggerSurface: {
     alignItems: 'center',
     backgroundColor: lightColors.secondary.hex,
     borderColor: lightColors.border.hex,
@@ -179,46 +232,79 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     minHeight: 44,
+    minWidth: 0,
+    overflow: 'hidden',
+    width: '100%',
+  },
+  valueRow: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    minHeight: 44,
+    minWidth: 0,
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
+    width: '100%',
+  },
+  selectedTextBox: {
+    flex: 1,
+    minWidth: 0,
   },
   pressed: {
     opacity: theme.opacity.pressed,
   },
   placeholder: {
     color: lightColors.mutedForeground.hex,
+    flex: 1,
+    flexShrink: 1,
     fontFamily: theme.typography.fontFamily.body,
     fontSize: 14,
+    includeFontPadding: false,
+    lineHeight: 20,
+    minWidth: 0,
   },
   selectedMain: {
     color: lightColors.foreground.hex,
     fontFamily: theme.typography.fontFamily.body,
     fontSize: 14,
     fontWeight: theme.typography.fontWeight.medium,
+    includeFontPadding: false,
+    lineHeight: 20,
   },
   selectedSub: {
     color: lightColors.mutedForeground.hex,
     fontFamily: theme.typography.fontFamily.body,
     fontSize: 11,
+    includeFontPadding: false,
+    lineHeight: 15,
     marginTop: 1,
   },
   chevron: {
     color: lightColors.mutedForeground.hex,
+    flexShrink: 0,
     fontSize: 18,
+    includeFontPadding: false,
+    lineHeight: 22,
     marginLeft: theme.spacing[2],
   },
-  backdrop: {
-    backgroundColor: 'rgba(0,0,0,0.4)',
+  modalRoot: {
     flex: 1,
+  },
+  keyboardFrame: {
+    flex: 1,
+  },
+  outsideDismiss: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: lightColors.background.hex,
   },
   sheet: {
     backgroundColor: lightColors.background.hex,
-    borderTopLeftRadius: theme.borderRadius.xl,
-    borderTopRightRadius: theme.borderRadius.xl,
-    maxHeight: '75%',
-    paddingBottom: theme.spacing[8],
+    flex: 1,
+    overflow: 'hidden',
     paddingHorizontal: theme.spacing[5],
     paddingTop: theme.spacing[5],
+    width: '100%',
   },
   sheetHeader: {
     alignItems: 'center',
@@ -227,10 +313,10 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing[4],
   },
   closeBtn: {
+    alignItems: 'center',
     backgroundColor: lightColors.secondary.hex,
     borderRadius: 999,
     height: 32,
-    alignItems: 'center',
     justifyContent: 'center',
     width: 32,
   },
@@ -250,15 +336,30 @@ const styles = StyleSheet.create({
     minHeight: 44,
     paddingHorizontal: theme.spacing[3],
   },
+  list: {
+    flex: 1,
+  },
   listContent: {
-    gap: theme.spacing[1],
-    paddingBottom: theme.spacing[4],
+    gap: theme.spacing[2],
+    paddingBottom: theme.spacing[6],
+  },
+  sheetBottomMask: {
+    backgroundColor: lightColors.background.hex,
+    bottom: 0,
+    height: theme.spacing[4],
+    left: 0,
+    position: 'absolute',
+    right: 0,
   },
   option: {
     alignItems: 'center',
+    backgroundColor: lightColors.card.hex,
+    borderColor: lightColors.border.hex,
     borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth.hairline,
     flexDirection: 'row',
     justifyContent: 'space-between',
+    minHeight: 64,
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[3],
   },
@@ -288,8 +389,6 @@ const styles = StyleSheet.create({
   checkmark: {
     color: lightColors.primary.hex,
     fontSize: 16,
-    fontWeight: theme.typography.fontWeight.bold,
-    marginLeft: theme.spacing[2],
   },
   emptyText: {
     paddingVertical: theme.spacing[4],

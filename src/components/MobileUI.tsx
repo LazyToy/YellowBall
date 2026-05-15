@@ -136,7 +136,7 @@ export function TopBar({
   onNotificationsPress?: () => void;
 }) {
   return (
-    <View style={styles.topBar}>
+    <View style={styles.topBar} testID="topbar-container">
       <View style={styles.topActions}>
         <Pressable
           accessibilityLabel="알림"
@@ -421,8 +421,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: theme.spacing[3],
     justifyContent: 'flex-end',
-    paddingHorizontal: theme.spacing[5],
-    paddingTop: theme.spacing[5],
   },
   topActions: {
     alignItems: 'center',
@@ -435,7 +433,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     height: 40,
     justifyContent: 'center',
-    marginTop: theme.spacing[2],
     width: 40,
   },
   actionGlyph: {

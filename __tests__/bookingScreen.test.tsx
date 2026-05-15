@@ -1,12 +1,21 @@
 import React from 'react';
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 
 const mockPush = jest.fn();
 const mockGetMyBookings = jest.fn();
 const mockGetMyDemoBookings = jest.fn();
+let mockFocusCallback: (() => void) | undefined;
 
 jest.mock('expo-router', () => ({
+  useFocusEffect: (callback: () => void) => {
+    const React = require('react');
+
+    mockFocusCallback = callback;
+    React.useEffect(() => {
+      callback();
+    }, [callback]);
+  },
   useRouter: () => ({
     push: mockPush,
   }),
@@ -66,9 +75,33 @@ const bookingBase = {
   },
 };
 
+const demoBookingBase = {
+  id: 'demo-active',
+  user_id: 'user-1',
+  demo_racket_id: 'demo-racket-1',
+  slot_id: 'demo-slot-1',
+  start_time: '2026-05-04T01:00:00.000Z',
+  expected_return_time: '2026-05-05T01:00:00.000Z',
+  actual_return_time: null,
+  status: 'approved',
+  user_notes: null,
+  admin_notes: null,
+  created_at: '2026-05-04T00:00:00.000Z',
+  updated_at: '2026-05-04T00:00:00.000Z',
+  demo_rackets: {
+    brand: 'Head',
+    model: 'Speed Demo',
+  },
+  booking_slots: {
+    start_time: '2026-05-04T01:00:00.000Z',
+    end_time: '2026-05-04T02:00:00.000Z',
+  },
+};
+
 describe('BookingScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockFocusCallback = undefined;
     mockGetMyDemoBookings.mockResolvedValue([]);
     mockGetMyBookings.mockResolvedValue([
       {
@@ -229,5 +262,57 @@ describe('BookingScreen', () => {
         textAlign: 'right',
       }),
     );
+  });
+
+  test('reloads bookings when the booking tab receives focus again', async () => {
+    const BookingScreen = require('../app/(tabs)/booking').default;
+    render(<BookingScreen />);
+
+    await waitFor(() => expect(mockGetMyBookings).toHaveBeenCalledTimes(1));
+
+    mockGetMyBookings.mockResolvedValueOnce([
+      {
+        ...bookingBase,
+        id: 'newly-created-booking',
+        status: 'approved',
+      },
+    ]);
+
+    await act(async () => {
+      mockFocusCallback?.();
+    });
+
+    await waitFor(() => expect(mockGetMyBookings).toHaveBeenCalledTimes(2));
+    expect(mockGetMyDemoBookings).toHaveBeenCalledTimes(2);
+  });
+
+  test('booking list shows only the reservation start time', async () => {
+    const BookingScreen = require('../app/(tabs)/booking').default;
+    const screen = render(<BookingScreen />);
+
+    await waitFor(() => expect(mockGetMyBookings).toHaveBeenCalledWith('user-1'));
+
+    expect(screen.getByText('2026-05-04 18:00')).toBeTruthy();
+    expect(screen.queryByText('2026-05-04 18:00 - 2026-05-04 19:00')).toBeNull();
+  });
+
+  test('opens demo booking detail from the demo booking card', async () => {
+    mockGetMyDemoBookings.mockResolvedValueOnce([demoBookingBase]);
+    const BookingScreen = require('../app/(tabs)/booking').default;
+    const screen = render(<BookingScreen />);
+
+    await waitFor(() => expect(mockGetMyDemoBookings).toHaveBeenCalledWith('user-1'));
+
+    expect(screen.getByTestId('demo-booking-detail-box')).toBeTruthy();
+    expect(screen.getByText('Head Speed Demo')).toBeTruthy();
+    expect(screen.getAllByText('2026-05-04 10:00').length).toBeGreaterThan(0);
+    expect(screen.getByText('2026-05-05 10:00')).toBeTruthy();
+
+    fireEvent.press(screen.getByTestId('demo-booking-card'));
+
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/booking-detail',
+      params: { id: 'demo-active', type: 'demo' },
+    });
   });
 });

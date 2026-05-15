@@ -117,6 +117,7 @@ export default async function AdminBookingsPage() {
                   realId={r.realId}
                   bookingType={r.bookingType}
                   currentStatus={r.status}
+                  hasCancelRequest={r.hasCancelRequest}
                 />
               </li>
             ))

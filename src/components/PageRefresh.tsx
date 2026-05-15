@@ -40,6 +40,9 @@ type PageRefreshContextValue = {
 };
 
 const PageRefreshContext = createContext<PageRefreshContextValue | null>(null);
+const KeyboardAutoScrollLockContext = createContext<
+  ((locked: boolean) => void) | null
+>(null);
 
 export function PageRefreshProvider({
   children,
@@ -119,8 +122,14 @@ export function RefreshableScrollView({
 }: ScrollViewProps) {
   const pageRefreshControl = usePageRefreshControl();
   const scrollViewRef = useRef<ScrollView>(null);
+  const [keyboardAutoScrollLocked, setKeyboardAutoScrollLocked] =
+    useState(false);
 
   const scrollToFocusedInput = useCallback(() => {
+    if (keyboardAutoScrollLocked) {
+      return;
+    }
+
     const scrollView = scrollViewRef.current;
     const focusedInput = NativeTextInput.State.currentlyFocusedInput?.() as
       | MeasurableInput
@@ -142,7 +151,7 @@ export function RefreshableScrollView({
       },
       () => undefined,
     );
-  }, []);
+  }, [keyboardAutoScrollLocked]);
 
   const handleContentSizeChange = useCallback(
     (contentWidth: number, contentHeight: number) => {
@@ -170,15 +179,24 @@ export function RefreshableScrollView({
   }, [scrollToFocusedInput]);
 
   return (
+    <KeyboardAutoScrollLockContext.Provider
+      value={setKeyboardAutoScrollLocked}
+    >
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={
+        keyboardAutoScrollLocked
+          ? undefined
+          : Platform.OS === 'ios'
+            ? 'padding'
+            : 'height'
+      }
       keyboardVerticalOffset={keyboardVerticalOffset}
       style={styles.keyboardAvoidingView}
     >
       <ScrollView
         ref={scrollViewRef}
         alwaysBounceVertical={alwaysBounceVertical}
-        automaticallyAdjustKeyboardInsets
+        automaticallyAdjustKeyboardInsets={!keyboardAutoScrollLocked}
         contentContainerStyle={[styles.scrollContent, contentContainerStyle]}
         keyboardDismissMode={keyboardDismissMode ?? 'interactive'}
         keyboardShouldPersistTaps={keyboardShouldPersistTaps ?? 'handled'}
@@ -188,6 +206,7 @@ export function RefreshableScrollView({
         {...props}
       />
     </KeyboardAvoidingView>
+    </KeyboardAutoScrollLockContext.Provider>
   );
 }
 
@@ -196,6 +215,18 @@ function usePageRefreshContext() {
 }
 
 const noopRefresh = async () => undefined;
+
+export function usePageKeyboardAutoScrollLock(locked: boolean) {
+  const setKeyboardAutoScrollLocked = useContext(KeyboardAutoScrollLockContext);
+
+  useEffect(() => {
+    setKeyboardAutoScrollLocked?.(locked);
+
+    return () => {
+      setKeyboardAutoScrollLocked?.(false);
+    };
+  }, [locked, setKeyboardAutoScrollLocked]);
+}
 
 const styles = StyleSheet.create({
   keyboardAvoidingView: {

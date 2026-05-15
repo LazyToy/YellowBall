@@ -7,6 +7,7 @@ import {
   updateDemoBookingStatus,
   updateServiceBookingStatus,
 } from '@/lib/admin-actions';
+import { isBookingStatusLockedAfterCompletion } from '@/lib/admin-status-lock';
 import { ActionFeedbackDialog } from './action-dialogs';
 
 const MENU_WIDTH = 160;
@@ -33,13 +34,21 @@ const DEMO_STATUS_OPTIONS = [
   { value: 'overdue', label: '반납 지연' },
 ];
 
+const SERVICE_MENU_STATUS_VALUES = new Set(
+  SERVICE_STATUS_OPTIONS.map((option) => option.value),
+);
+
 interface BookingStatusMenuProps {
   realId: string;
   bookingType: 'service' | 'demo';
   currentStatus: string;
 }
 
-const toServiceWorkStatus = (status: string) => {
+const toServiceMenuStatus = (status: string) => {
+  if (SERVICE_MENU_STATUS_VALUES.has(status)) {
+    return status;
+  }
+
   if (
     [
       'completed',
@@ -157,10 +166,16 @@ export function BookingStatusMenu({
     bookingType === 'service' ? SERVICE_STATUS_OPTIONS : DEMO_STATUS_OPTIONS;
   const selectedStatus =
     bookingType === 'service'
-      ? toServiceWorkStatus(currentStatus)
+      ? toServiceMenuStatus(currentStatus)
       : currentStatus;
+  const locked = isBookingStatusLockedAfterCompletion(bookingType, currentStatus);
 
   const handleSelect = async (newStatus: string) => {
+    if (locked) {
+      setOpen(false);
+      return;
+    }
+
     if (newStatus === selectedStatus) {
       setOpen(false);
       return;
@@ -243,13 +258,17 @@ export function BookingStatusMenu({
         ref={buttonRef}
         onClick={(event) => {
           event.stopPropagation();
+          if (locked) {
+            return;
+          }
           if (!open) {
             updateMenuPosition();
           }
           setOpen((value) => !value);
         }}
-        disabled={loading}
-        className="size-7 inline-grid place-items-center rounded-md hover:bg-secondary disabled:opacity-50"
+        disabled={loading || locked}
+        title={locked ? '완료된 상태는 변경할 수 없습니다.' : undefined}
+        className="size-7 inline-grid place-items-center rounded-md hover:bg-secondary disabled:opacity-50 disabled:cursor-not-allowed"
         aria-label="상태 변경"
       >
         {loading ? (

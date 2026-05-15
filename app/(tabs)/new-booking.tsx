@@ -1,13 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
 import { TextInput } from '@/components/AppText';
 import { Button } from '@/components/Button';
-import {
-  CalendarPicker,
-  DateTimeCalendarPicker,
-} from '@/components/CalendarPicker';
+import { CalendarPicker } from '@/components/CalendarPicker';
 import { FeedbackDialog } from '@/components/FeedbackDialog';
 import { Input } from '@/components/Input';
 import { BackButton } from '@/components/MobileUI';
@@ -47,9 +44,14 @@ import type {
   UserRacket,
 } from '@/types/database';
 import {
+  formatMinutesAsTime,
   formatKstDateKey,
+  formatKstDateTime,
   formatKstTime,
+  getMinimumTimeForKstDate,
   isPastIsoDateTime,
+  kstDateAndTimeToIso,
+  timeToMinutes,
 } from '@/utils/kstDateTime';
 import {
   getBusinessHoursLabel,
@@ -57,6 +59,7 @@ import {
 } from '@/utils/bookingCalendarStatus';
 
 type BookingMode = 'stringing' | 'demo';
+type DemoTimeStep = 'rental' | 'return' | 'summary';
 type BookingStringRelation = {
   brand?: string | null;
   name?: string | null;
@@ -69,10 +72,16 @@ type RebookCandidate = ServiceBooking & {
 const today = () => formatKstDateKey();
 const MIN_TENSION = 35;
 const MAX_TENSION = 70;
+const DEMO_RETURN_MINUTE_STEP = 30;
+const DEMO_RETURN_LIMIT_DAYS = 7;
+const DEMO_RETURN_LIMIT_MS = DEMO_RETURN_LIMIT_DAYS * 24 * 60 * 60 * 1000;
 
 const formatSlot = (slot: BookingSlot) => {
   return formatKstTime(slot.start_time);
 };
+
+const formatSlotDateTime = (slot: BookingSlot) =>
+  formatKstDateTime(slot.start_time);
 
 const formatWon = (value?: number | null) =>
   value === null || value === undefined ? '가격 문의' : `${value.toLocaleString('ko-KR')}원`;
@@ -170,6 +179,41 @@ type BusinessHours = {
 
 const normalizeScheduleTime = (value: string) => value.slice(0, 5);
 
+const getLaterTime = (...values: (string | null | undefined)[]) =>
+  values.filter(Boolean).reduce<string | null>(
+    (latest, value) => (!latest || value! > latest ? value! : latest),
+    null,
+  );
+
+const getDemoReturnLimitTime = (slot: BookingSlot) =>
+  new Date(slot.start_time).getTime() + DEMO_RETURN_LIMIT_MS;
+
+const isDemoReturnWithinLimit = (
+  slot: BookingSlot,
+  expectedReturnTime: string,
+) => {
+  const returnTime = new Date(expectedReturnTime).getTime();
+  const limitTime = getDemoReturnLimitTime(slot);
+
+  return Number.isFinite(returnTime) && returnTime <= limitTime;
+};
+
+const buildTimeOptions = (
+  startHour: number,
+  endHour: number,
+  minuteStep = DEMO_RETURN_MINUTE_STEP,
+) => {
+  const startMinutes = startHour * 60;
+  const endMinutes = endHour * 60;
+  const options: string[] = [];
+
+  for (let minutes = startMinutes; minutes <= endMinutes; minutes += minuteStep) {
+    options.push(formatMinutesAsTime(minutes));
+  }
+
+  return options;
+};
+
 const getDayOfWeekForDateKey = (dateKey: string) => {
   const [year, month, day] = dateKey.split('-').map(Number);
 
@@ -263,7 +307,9 @@ export default function NewBookingScreen() {
   const [deliveryMethod, setDeliveryMethod] =
     useState<ServiceDeliveryMethod>('store_pickup');
   const [addressId, setAddressId] = useState('');
+  const [demoReturnDate, setDemoReturnDate] = useState(today());
   const [expectedReturnTime, setExpectedReturnTime] = useState('');
+  const [demoTimeStep, setDemoTimeStep] = useState<DemoTimeStep>('rental');
   const [userNotes, setUserNotes] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<string>();
@@ -295,7 +341,9 @@ export default function NewBookingScreen() {
     );
     setDeliveryMethod('store_pickup');
     setAddressId(addresses.find((item) => item.is_default)?.id || '');
+    setDemoReturnDate(today());
     setExpectedReturnTime('');
+    setDemoTimeStep('rental');
     setUserNotes('');
     setMessage(undefined);
     setSuccessDialog(null);
@@ -376,12 +424,16 @@ export default function NewBookingScreen() {
   useEffect(() => {
     if (preferredMode) {
       setMode(defaultMode);
+      if (defaultMode === 'demo') {
+        setDemoTimeStep('rental');
+      }
     }
   }, [defaultMode, preferredMode]);
 
   useEffect(() => {
     if (mode === 'stringing' && !canBookString && canBookDemo) {
       setMode('demo');
+      setDemoTimeStep('rental');
     }
 
     if (mode === 'demo' && !canBookDemo && canBookString) {
@@ -417,6 +469,13 @@ export default function NewBookingScreen() {
     () => slots.find((slot) => slot.id === slotId),
     [slotId, slots],
   );
+  const selectedSlotDateKey = useMemo(() => {
+    if (!selectedSlot?.start_time) {
+      return date;
+    }
+
+    return formatKstDateKey(new Date(selectedSlot.start_time));
+  }, [date, selectedSlot?.start_time]);
   const availableSlotCount = useMemo(
     () =>
       slots.filter((slot) =>
@@ -424,22 +483,54 @@ export default function NewBookingScreen() {
       ).length,
     [minimumBookingStartIso, slots],
   );
+  const isDemoReturnDateStep = mode === 'demo' && demoTimeStep !== 'rental';
+  const calendarDate = isDemoReturnDateStep ? demoReturnDate : date;
+  const calendarLabel =
+    mode === 'demo'
+      ? isDemoReturnDateStep
+        ? '반납 날짜'
+        : '대여 날짜'
+      : '날짜';
+  const demoReturnMaxDate = addDaysToDateKey(
+    selectedSlotDateKey,
+    DEMO_RETURN_LIMIT_DAYS,
+  );
+  const calendarMinDate = isDemoReturnDateStep ? selectedSlotDateKey : today();
+  const calendarMaxDate = isDemoReturnDateStep ? demoReturnMaxDate : maxBookingDate;
   const businessHoursLabel = useMemo(
-    () => getBusinessHoursLabel(date, shopSchedule, closedDates),
-    [closedDates, date, shopSchedule],
+    () => getBusinessHoursLabel(calendarDate, shopSchedule, closedDates),
+    [calendarDate, closedDates, shopSchedule],
   );
-  const returnDateKey = useMemo(() => {
-    const referenceDateTime = expectedReturnTime || selectedSlot?.end_time || '';
-    const parsed = referenceDateTime ? new Date(referenceDateTime) : null;
-
-    return parsed && Number.isFinite(parsed.getTime())
-      ? formatKstDateKey(parsed)
-      : date;
-  }, [date, expectedReturnTime, selectedSlot?.end_time]);
   const demoReturnBusinessHours = useMemo(
-    () => getBusinessHoursForDate(returnDateKey, shopSchedule, closedDates),
-    [closedDates, returnDateKey, shopSchedule],
+    () => getBusinessHoursForDate(demoReturnDate, shopSchedule, closedDates),
+    [closedDates, demoReturnDate, shopSchedule],
   );
+  const demoReturnTimeOptions = useMemo(() => {
+    if (!demoReturnBusinessHours || !selectedSlot) {
+      return [];
+    }
+
+    const slotStartTime = formatKstTime(selectedSlot.start_time);
+    const currentTime =
+      demoReturnDate === today()
+        ? getMinimumTimeForKstDate(demoReturnDate)
+        : null;
+    const lowerBound = getLaterTime(
+      demoReturnBusinessHours.minSelectableTime,
+      currentTime,
+      demoReturnDate === selectedSlotDateKey ? slotStartTime : null,
+    );
+
+    return buildTimeOptions(
+      demoReturnBusinessHours.startHour,
+      demoReturnBusinessHours.endHour,
+    ).filter(
+      (time) =>
+        (!lowerBound || timeToMinutes(time) > timeToMinutes(lowerBound)) &&
+        (!demoReturnBusinessHours.maxTime ||
+          time <= demoReturnBusinessHours.maxTime),
+    );
+  }, [demoReturnBusinessHours, demoReturnDate, selectedSlot, selectedSlotDateKey]);
   const recentPreviousBookings = useMemo(
     () => getRecentRebookCandidates(previousBookings),
     [previousBookings],
@@ -453,14 +544,59 @@ export default function NewBookingScreen() {
     if (
       mode !== 'demo' ||
       !selectedSlot ||
-      selectedSlot.service_type !== 'demo' ||
-      expectedReturnTime
+      selectedSlot.service_type !== 'demo'
     ) {
       return;
     }
 
-    setExpectedReturnTime(selectedSlot.end_time);
-  }, [expectedReturnTime, mode, selectedSlot]);
+    if (demoReturnDate < selectedSlotDateKey) {
+      setDemoReturnDate(selectedSlotDateKey);
+      setExpectedReturnTime('');
+      return;
+    }
+
+    const expectedDateKey = expectedReturnTime
+      ? formatKstDateKey(new Date(expectedReturnTime))
+      : '';
+    const selectedReturnTime = new Date(expectedReturnTime).getTime();
+    const slotStartTime = new Date(selectedSlot.start_time).getTime();
+    const returnLimitTime = getDemoReturnLimitTime(selectedSlot);
+    const selectedReturnTimeInvalid =
+      !Number.isFinite(selectedReturnTime) ||
+      (demoReturnDate === selectedSlotDateKey &&
+        selectedReturnTime <= slotStartTime) ||
+      selectedReturnTime > returnLimitTime;
+
+    if (
+      !expectedReturnTime ||
+      expectedDateKey !== demoReturnDate ||
+      selectedReturnTimeInvalid
+    ) {
+      const fallbackTime = formatKstTime(selectedSlot.end_time);
+      const nextTime = [fallbackTime, ...demoReturnTimeOptions].find(
+        (time, index, options) =>
+          options.indexOf(time) === index &&
+          demoReturnTimeOptions.includes(time) &&
+          isDemoReturnWithinLimit(
+            selectedSlot,
+            kstDateAndTimeToIso(demoReturnDate, time),
+          ),
+      );
+
+      if (nextTime) {
+        setExpectedReturnTime(kstDateAndTimeToIso(demoReturnDate, nextTime));
+      } else if (expectedReturnTime) {
+        setExpectedReturnTime('');
+      }
+    }
+  }, [
+    demoReturnDate,
+    demoReturnTimeOptions,
+    expectedReturnTime,
+    mode,
+    selectedSlot,
+    selectedSlotDateKey,
+  ]);
 
   const applyRebook = (booking: ServiceBooking) => {
     const prefill = buildRebookPrefill(booking);
@@ -485,6 +621,91 @@ export default function NewBookingScreen() {
     if (useSameTension) {
       setCrossStringId(id);
     }
+  };
+
+  const showDemoReturnLimitAlert = () => {
+    const limitMessage =
+      '반납 예정 시간은 대여 예정 시간 기준 일주일을 넘길 수 없습니다.';
+
+    Alert.alert('선택 불가', limitMessage);
+    setMessage(limitMessage);
+  };
+
+  const handleSelectDate = (value: string) => {
+    if (mode === 'demo' && demoTimeStep !== 'rental') {
+      if (value < selectedSlotDateKey) {
+        setMessage('반납 날짜는 대여 날짜보다 빠를 수 없습니다.');
+        return;
+      }
+
+      if (value > demoReturnMaxDate) {
+        showDemoReturnLimitAlert();
+        return;
+      }
+
+      setDemoReturnDate(value);
+      setExpectedReturnTime('');
+      if (demoTimeStep === 'summary') {
+        setDemoTimeStep('return');
+      }
+      return;
+    }
+
+    setDate(value);
+    if (mode === 'demo') {
+      setDemoReturnDate(value);
+      setExpectedReturnTime('');
+      setDemoTimeStep('rental');
+    }
+  };
+
+  const handleSelectDemoSlot = (id: string) => {
+    const nextSlot = slots.find((slot) => slot.id === id);
+
+    setSlotId(id);
+    setDemoReturnDate(
+      nextSlot?.start_time
+        ? formatKstDateKey(new Date(nextSlot.start_time))
+        : date,
+    );
+    setExpectedReturnTime('');
+    setDemoTimeStep('rental');
+  };
+
+  const handleCompleteDemoRentalTime = () => {
+    setDemoReturnDate((current) =>
+      current && current >= selectedSlotDateKey ? current : selectedSlotDateKey,
+    );
+    setDemoTimeStep('return');
+  };
+
+  const handleEditDemoRentalTime = () => {
+    setExpectedReturnTime('');
+    setDemoReturnDate(selectedSlotDateKey);
+    setDemoTimeStep('rental');
+  };
+
+  const handleEditDemoReturnTime = () => {
+    setDemoReturnDate((current) =>
+      current && current >= selectedSlotDateKey ? current : selectedSlotDateKey,
+    );
+    setDemoTimeStep('return');
+  };
+
+  const handleSelectDemoReturnTime = (time: string) => {
+    if (!selectedSlot) {
+      return;
+    }
+
+    const nextReturnTime = kstDateAndTimeToIso(demoReturnDate, time);
+
+    if (!isDemoReturnWithinLimit(selectedSlot, nextReturnTime)) {
+      showDemoReturnLimitAlert();
+      return;
+    }
+
+    setMessage(undefined);
+    setExpectedReturnTime(nextReturnTime);
   };
 
   const handleSubmit = async () => {
@@ -539,6 +760,23 @@ export default function NewBookingScreen() {
 
     if (mode === 'demo' && isPastIsoDateTime(expectedReturnTime)) {
       setMessage('현재 시간 이후의 반납 예정 시간을 선택해 주세요.');
+      return;
+    }
+
+    if (
+      mode === 'demo' &&
+      new Date(expectedReturnTime).getTime() <=
+        new Date(selectedSlot.start_time).getTime()
+    ) {
+      setMessage('반납 예정 시간은 대여 예정 시간보다 늦어야 합니다.');
+      return;
+    }
+
+    if (
+      mode === 'demo' &&
+      !isDemoReturnWithinLimit(selectedSlot, expectedReturnTime)
+    ) {
+      setMessage('반납 예정 시간은 대여 예정 시간 기준 일주일을 넘길 수 없습니다.');
       return;
     }
 
@@ -610,7 +848,13 @@ export default function NewBookingScreen() {
           </ModeButton>
           ) : null}
           {canBookDemo ? (
-          <ModeButton active={mode === 'demo'} onPress={() => setMode('demo')}>
+          <ModeButton
+            active={mode === 'demo'}
+            onPress={() => {
+              setMode('demo');
+              setDemoTimeStep('rental');
+            }}
+          >
             시타
           </ModeButton>
           ) : null}
@@ -697,12 +941,13 @@ export default function NewBookingScreen() {
       <View style={styles.section}>
         <Typography variant="h2">{mode === 'stringing' ? '4' : '2'}. 날짜/시간</Typography>
         <CalendarPicker
+          key={`booking-calendar-${mode}-${demoTimeStep}-${calendarDate}`}
           getDateStatus={getBookingDateStatus}
-          maxDate={maxBookingDate}
-          label="날짜"
-          minDate={today()}
-          selectedDate={date}
-          onSelectDate={setDate}
+          maxDate={calendarMaxDate}
+          label={calendarLabel}
+          minDate={calendarMinDate}
+          selectedDate={calendarDate}
+          onSelectDate={handleSelectDate}
           showStatusLegend
         />
         <View style={styles.slotSummary}>
@@ -713,25 +958,55 @@ export default function NewBookingScreen() {
             예약 가능 {availableSlotCount}개
           </Typography>
         </View>
-        <SlotPickerRow
-          items={slots}
-          minimumStartIso={minimumBookingStartIso}
-          label={mode === 'demo' ? '대여 예정 시간' : undefined}
-          selectedId={slotId}
-          onSelect={setSlotId}
-        />
-        {mode === 'demo' ? (
-          <DateTimeCalendarPicker
-            endHour={demoReturnBusinessHours?.endHour ?? -1}
-            label="반납 예정 시간"
-            maxTime={demoReturnBusinessHours?.maxTime}
-            minDate={today()}
-            minDateTime={new Date().toISOString()}
-            minSelectableTime={demoReturnBusinessHours?.minSelectableTime}
-            onChange={setExpectedReturnTime}
-            startHour={demoReturnBusinessHours?.startHour ?? 0}
-            timeLabel="반납 예정 시간"
-            value={expectedReturnTime}
+        {mode === 'demo' && demoTimeStep === 'rental' ? (
+          <View style={styles.slotPickerGroup} testID="demo-rental-time-picker">
+            <SlotPickerRow
+              items={slots}
+              minimumStartIso={minimumBookingStartIso}
+              label="대여 예정 시간"
+              selectedId={slotId}
+              onSelect={handleSelectDemoSlot}
+            />
+            <Button
+              disabled={!selectedSlot}
+              onPress={handleCompleteDemoRentalTime}
+              size="sm"
+              testID="demo-rental-time-complete-button"
+              variant="outline"
+            >
+              대여 시간 완료
+            </Button>
+          </View>
+        ) : null}
+        {mode === 'stringing' ? (
+          <SlotPickerRow
+            items={slots}
+            minimumStartIso={minimumBookingStartIso}
+            selectedId={slotId}
+            onSelect={setSlotId}
+          />
+        ) : null}
+        {mode === 'demo' && demoTimeStep === 'return' ? (
+          <>
+            <DemoTimeSummary
+              label="대여 예정 시간"
+              testID="demo-selected-rental-time"
+              value={selectedSlot ? formatSlotDateTime(selectedSlot) : '-'}
+            />
+            <DemoReturnTimePicker
+              options={demoReturnTimeOptions}
+              selectedTime={formatKstTime(expectedReturnTime)}
+              onComplete={() => setDemoTimeStep('summary')}
+              onSelect={handleSelectDemoReturnTime}
+            />
+          </>
+        ) : null}
+        {mode === 'demo' && demoTimeStep === 'summary' ? (
+          <DemoTimeReview
+            rentalTime={selectedSlot ? formatSlotDateTime(selectedSlot) : '-'}
+            returnTime={formatKstDateTime(expectedReturnTime)}
+            onEditRental={handleEditDemoRentalTime}
+            onEditReturn={handleEditDemoReturnTime}
           />
         ) : null}
       </View>
@@ -778,6 +1053,7 @@ export default function NewBookingScreen() {
           value={userNotes}
         />
         <Button
+          disabled={mode === 'demo' && demoTimeStep !== 'summary'}
           loading={isLoading}
           onPress={handleSubmit}
           testID="new-booking-submit-button"
@@ -1338,6 +1614,135 @@ function SlotPickerRow({
   );
 }
 
+function DemoReturnTimePicker({
+  onComplete,
+  options,
+  selectedTime,
+  onSelect,
+}: {
+  onComplete: () => void;
+  options: string[];
+  selectedTime: string;
+  onSelect: (time: string) => void;
+}) {
+  if (options.length === 0) {
+    return (
+      <Typography variant="caption" style={styles.muted}>
+        선택 가능한 반납 시간이 없습니다.
+      </Typography>
+    );
+  }
+
+  return (
+    <View style={styles.slotPickerGroup} testID="demo-return-time-picker">
+      <Typography variant="caption">반납 예정 시간</Typography>
+      <View style={styles.chipRow}>
+        {options.map((time) => {
+          const active = selectedTime === time;
+
+          return (
+            <Pressable
+              accessibilityLabel={`반납 예정 시간 ${time}`}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              key={time}
+              onPress={() => onSelect(time)}
+              style={[styles.chip, active && styles.chipActive]}
+              testID={`demo-return-time-option-${time}`}
+            >
+              <Typography
+                variant="caption"
+                style={active && styles.chipTextActive}
+              >
+                {time}
+              </Typography>
+            </Pressable>
+          );
+        })}
+      </View>
+      <Button
+        disabled={!selectedTime || selectedTime === '--:--'}
+        onPress={onComplete}
+        size="sm"
+        testID="demo-return-time-complete-button"
+        variant="outline"
+      >
+        반납 시간 완료
+      </Button>
+    </View>
+  );
+}
+
+function DemoTimeSummary({
+  label,
+  testID,
+  value,
+}: {
+  label: string;
+  testID: string;
+  value: string;
+}) {
+  return (
+    <View style={styles.timeSummaryPanel} testID={testID}>
+      <Typography variant="caption" style={styles.muted}>
+        {label}
+      </Typography>
+      <Typography
+        variant="h2"
+        style={styles.timeSummaryValue}
+        testID={`${testID}-value`}
+      >
+        {value}
+      </Typography>
+    </View>
+  );
+}
+
+function DemoTimeReview({
+  rentalTime,
+  returnTime,
+  onEditRental,
+  onEditReturn,
+}: {
+  rentalTime: string;
+  returnTime: string;
+  onEditRental: () => void;
+  onEditReturn: () => void;
+}) {
+  return (
+    <View style={styles.slotPickerGroup} testID="demo-time-review">
+      <DemoTimeSummary
+        label="대여 예정 시간"
+        testID="demo-selected-rental-time"
+        value={rentalTime}
+      />
+      <DemoTimeSummary
+        label="반납 예정 시간"
+        testID="demo-selected-return-time"
+        value={returnTime}
+      />
+      <View style={styles.twoColumn}>
+        <Button
+          onPress={onEditRental}
+          size="sm"
+          testID="demo-rental-time-back-button"
+          variant="outline"
+        >
+          대여 시간 다시 선택
+        </Button>
+        <Button
+          onPress={onEditReturn}
+          size="sm"
+          testID="demo-return-time-back-button"
+          variant="outline"
+        >
+          반납 시간 다시 선택
+        </Button>
+      </View>
+    </View>
+  );
+}
+
 function RebookHistoryPanel({
   items,
   onSelect,
@@ -1475,6 +1880,18 @@ const styles = StyleSheet.create({
   },
   slotPickerGroup: {
     gap: theme.spacing[2],
+  },
+  timeSummaryPanel: {
+    backgroundColor: lightColors.secondary.hex,
+    borderColor: lightColors.border.hex,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth.hairline,
+    gap: theme.spacing[1],
+    padding: theme.spacing[3],
+  },
+  timeSummaryValue: {
+    color: lightColors.foreground.hex,
+    fontVariant: ['tabular-nums'],
   },
   previewPanel: {
     backgroundColor: lightColors.card.hex,

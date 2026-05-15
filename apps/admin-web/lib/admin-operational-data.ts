@@ -159,6 +159,7 @@ function buildKpis(
   return [
     {
       delta: hasAdminReadKey ? '실시간' : '서비스 키 필요',
+      href: '/admin/queue',
       label: '오늘 작업 예약',
       sub: `진행 중 ${inProgress} · 완료 ${doneToday}`,
       tone: 'primary',
@@ -167,6 +168,7 @@ function buildKpis(
     },
     {
       delta: hasAdminReadKey ? '실시간' : '서비스 키 필요',
+      href: '/admin/bookings',
       label: '오늘 시타 예약',
       sub: todayDemoBookings[0]
         ? `다음 예약 ${formatTime(todayDemoBookings[0].start_time)}`
@@ -177,6 +179,7 @@ function buildKpis(
     },
     {
       delta: hasAdminReadKey ? '실시간' : '주문 0건',
+      href: '/admin/orders',
       label: '오늘 매출',
       sub: 'shop_orders 기준',
       tone: 'neutral',
@@ -185,6 +188,7 @@ function buildKpis(
     },
     {
       delta: '실시간',
+      href: '/admin/inventory',
       label: '재고 알림',
       sub: 'shop_products 기준',
       tone: 'danger',

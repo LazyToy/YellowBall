@@ -442,14 +442,17 @@ export default function HomeScreen() {
         />
       </View>
 
-      <TopBar onNotificationsPress={() => router.push('/notifications')} />
-
       <View style={styles.heroSection}>
-        <Text style={styles.greeting}>안녕하세요, {nickname}님</Text>
-        <Text style={styles.heroTitle}>
-          오늘은 어떤 라켓으로{'\n'}
-          <Text style={styles.heroAccent}>완벽한 한 게임</Text> 할까요?
-        </Text>
+        <View style={styles.heroHeaderRow}>
+          <View style={styles.heroCopy}>
+            <Text style={styles.greeting}>안녕하세요, {nickname}님</Text>
+            <Text style={styles.heroTitle}>
+              오늘은 어떤 라켓으로{'\n'}
+              <Text style={styles.heroAccent}>완벽한 한 게임</Text> 할까요?
+            </Text>
+          </View>
+          <TopBar onNotificationsPress={() => router.push('/notifications')} />
+        </View>
 
         {menuSettings['string-booking'] && rebook ? (
           <Card style={styles.rebookCard}>
@@ -639,7 +642,7 @@ export default function HomeScreen() {
               <Pressable
                 accessibilityLabel="라켓 관리"
                 accessibilityRole="button"
-                onPress={() => router.push('/rackets')}
+                onPress={() => router.push('/racket-list')}
                 testID="home-racket-manage-link"
               >
                 <Text style={styles.linkText}>관리 {'>'}</Text>
@@ -901,7 +904,11 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   homeLayoutProbeWrap: {
     height: 0,
+    left: 0,
     paddingHorizontal: screenHorizontalPadding,
+    position: 'absolute',
+    right: 0,
+    top: 0,
     width: '100%',
   },
   homeLayoutProbe: {
@@ -911,6 +918,18 @@ const styles = StyleSheet.create({
   heroSection: {
     gap: theme.spacing[3],
     paddingHorizontal: screenHorizontalPadding,
+    paddingTop: theme.spacing[6],
+  },
+  heroHeaderRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: theme.spacing[3],
+    justifyContent: 'space-between',
+  },
+  heroCopy: {
+    flex: 1,
+    gap: theme.spacing[2],
+    minWidth: 0,
   },
   greeting: {
     color: lightColors.mutedForeground.hex,

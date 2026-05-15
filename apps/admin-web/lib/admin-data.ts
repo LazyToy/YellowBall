@@ -42,6 +42,14 @@ export type ServiceBookingRow = {
   main_string?: RestString | null;
   cross_string?: RestString | null;
   booking_slots?: RestBookingSlot | null;
+  has_cancel_request?: boolean;
+  cancel_requested_at?: string | null;
+};
+
+export type BookingStatusLogRow = {
+  booking_id: string;
+  changed_at: string;
+  new_status: string;
 };
 
 export type DemoBookingRow = {
@@ -195,6 +203,8 @@ export type AdminBookingListItem = {
   estimated: number;
   status: string;
   statusLabel: string;
+  hasCancelRequest?: boolean;
+  cancelRequestedAt?: string | null;
   urgent: boolean;
 };
 
@@ -318,10 +328,10 @@ const statusLabels: Record<string, string> = {
   delivered: '완료',
   done: '완료',
   cancelled_user: '접수',
-  cancelled_admin: '접수',
+  cancelled_admin: '관리자 취소',
   rejected: '접수',
   reschedule_requested: '접수',
-  no_show: '접수',
+  no_show: '노쇼',
   refund_pending: '완료',
   refund_done: '완료',
   in_use: '대여 중',
@@ -432,6 +442,9 @@ async function fetchRows<T>(
 
 export function toAdminBookingItem(booking: ServiceBookingRow): AdminBookingListItem {
   const slotTime = booking.booking_slots?.start_time ?? booking.created_at;
+  const hasCancelRequest =
+    booking.has_cancel_request === true &&
+    activeServiceStatuses.includes(booking.status);
   const price =
     (booking.main_string?.price ?? 0) +
     (booking.cross_string?.name && booking.cross_string?.name !== booking.main_string?.name
@@ -449,7 +462,9 @@ export function toAdminBookingItem(booking: ServiceBookingRow): AdminBookingList
     racket: getRacketName(booking.user_rackets),
     requested: formatDateTime(booking.created_at),
     status: booking.status,
-    statusLabel: statusLabel(booking.status),
+    statusLabel: hasCancelRequest ? '취소 요청' : statusLabel(booking.status),
+    hasCancelRequest,
+    cancelRequestedAt: hasCancelRequest ? booking.cancel_requested_at ?? null : null,
     type: '스트링',
     urgent:
       activeServiceStatuses.includes(booking.status) &&
@@ -668,6 +683,56 @@ export async function loadServiceBookings(limit = 100) {
   );
 }
 
+export async function loadServiceCancelRequestLogs(limit = 200) {
+  return fetchRows<BookingStatusLogRow>(
+    'booking_status_logs',
+    {
+      booking_type: 'eq.service',
+      limit: `${limit}`,
+      new_status: 'eq.cancel_requested',
+      order: 'changed_at.desc',
+      select: 'booking_id,changed_at,new_status',
+    },
+    { requireAdminKey: true },
+  );
+}
+
+export async function loadServiceCancelRequestLogsForBooking(bookingId: string) {
+  return fetchRows<BookingStatusLogRow>(
+    'booking_status_logs',
+    {
+      booking_id: `eq.${bookingId}`,
+      booking_type: 'eq.service',
+      limit: '1',
+      new_status: 'eq.cancel_requested',
+      order: 'changed_at.desc',
+      select: 'booking_id,changed_at,new_status',
+    },
+    { requireAdminKey: true },
+  );
+}
+
+function attachServiceCancelRequests(
+  bookings: ServiceBookingRow[],
+  logs: BookingStatusLogRow[],
+) {
+  const latestByBookingId = new Map<string, string>();
+
+  logs.forEach((log) => {
+    if (!latestByBookingId.has(log.booking_id)) {
+      latestByBookingId.set(log.booking_id, log.changed_at);
+    }
+  });
+
+  return bookings.map((booking) => ({
+    ...booking,
+    cancel_requested_at: latestByBookingId.get(booking.id) ?? null,
+    has_cancel_request:
+      latestByBookingId.has(booking.id) &&
+      activeServiceStatuses.includes(booking.status),
+  }));
+}
+
 export async function loadDemoBookings(limit = 100) {
   return fetchRows<DemoBookingRow>(
     'demo_bookings',
@@ -693,7 +758,14 @@ export async function loadServiceBookingById(id: string) {
     { requireAdminKey: true },
   );
 
-  return rows[0] ?? null;
+  const booking = rows[0] ?? null;
+
+  if (!booking) {
+    return null;
+  }
+
+  const logs = await loadServiceCancelRequestLogsForBooking(id);
+  return attachServiceCancelRequests([booking], logs)[0] ?? null;
 }
 
 export async function loadDemoBookingById(id: string) {
@@ -781,19 +853,25 @@ export async function loadAnnouncements(limit = 100) {
 }
 
 export async function getAdminBookingsPageData() {
-  const [serviceBookings, demoBookings] = await Promise.all([
+  const [serviceBookings, demoBookings, cancelRequestLogs] = await Promise.all([
     loadServiceBookings(),
     loadDemoBookings(),
+    loadServiceCancelRequestLogs(),
   ]);
+  const serviceBookingsWithCancelRequests = attachServiceCancelRequests(
+    serviceBookings,
+    cancelRequestLogs,
+  );
   const bookings = [
-    ...serviceBookings.map(toAdminBookingItem),
+    ...serviceBookingsWithCancelRequests.map(toAdminBookingItem),
     ...demoBookings.map(toAdminDemoBookingItem),
   ].sort((a, b) => b.requested.localeCompare(a.requested));
 
   return {
     bookings,
     pendingRequests: bookings.filter((booking) =>
-      ['requested', 'reschedule_requested'].includes(booking.status),
+      ['requested', 'reschedule_requested'].includes(booking.status) ||
+      booking.hasCancelRequest === true,
     ),
   };
 }

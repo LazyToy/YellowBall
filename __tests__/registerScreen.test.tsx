@@ -641,7 +641,7 @@ describe('RegisterScreen', () => {
     expect(mockSignUp).not.toHaveBeenCalled();
   });
 
-  test('submits valid signup, shows email confirmation alert, and navigates to login after confirmation', async () => {
+  test('submits valid signup, shows the shared email confirmation dialog, and navigates to login after confirmation', async () => {
     const RegisterScreen = require('../app/(auth)/register').default;
     const screen = render(<RegisterScreen />);
 
@@ -677,21 +677,16 @@ describe('RegisterScreen', () => {
       ),
     );
 
-    expect(Alert.alert).toHaveBeenCalledWith(
-      '이메일 인증 안내',
-      'user@naver.com 주소로 인증 이메일을 보냈습니다. 메일함에서 인증을 완료한 뒤 로그인해 주세요.',
-      expect.arrayContaining([
-        expect.objectContaining({
-          text: '확인',
-        }),
-      ]),
-    );
+    expect(Alert.alert).not.toHaveBeenCalled();
+    expect(screen.getByText('이메일 인증 안내')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'user@naver.com 주소로 인증 이메일을 보냈습니다. 메일함에서 인증을 완료한 뒤 로그인해 주세요.',
+      ),
+    ).toBeTruthy();
     expect(mockReplace).not.toHaveBeenCalledWith('/(auth)/login');
 
-    const alertButtons = alertSpy.mock.calls[0][2] as
-      | { onPress?: () => void; text?: string }[]
-      | undefined;
-    alertButtons?.[0]?.onPress?.();
+    fireEvent.press(screen.getByLabelText('알림 확인'));
 
     expect(mockReplace).toHaveBeenCalledWith('/(auth)/login');
   });

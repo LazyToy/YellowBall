@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Keyboard,
   Pressable,
   StyleSheet,
   View,
@@ -19,6 +20,24 @@ import { getAppContentBlock } from '@/services/appContentService';
 import type { SocialAuthProvider } from '@/services/authService';
 import { getAppAssetUrl } from '@/services/storageService';
 
+const DEFAULT_LOGIN_LOGO_PATH = 'brand/yellowball-logo-transparent.png';
+
+const resolveLoginLogoUrl = (
+  assets?: {
+    login_logo_path?: string | null;
+    login_logo_url?: string | null;
+    logo_path?: string | null;
+    logo_url?: string | null;
+  } | null,
+) =>
+  getAppAssetUrl(
+    assets?.login_logo_path ??
+      assets?.login_logo_url ??
+      assets?.logo_path ??
+      assets?.logo_url ??
+      DEFAULT_LOGIN_LOGO_PATH,
+  );
+
 export default function LoginScreen() {
   const router = useRouter();
   const { signIn, signInWithOAuthProvider } = useAuth();
@@ -28,7 +47,9 @@ export default function LoginScreen() {
   const [socialProvider, setSocialProvider] =
     useState<SocialAuthProvider | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>();
-  const [brandLogoUrl, setBrandLogoUrl] = useState<string | null>(null);
+  const [brandLogoUrl, setBrandLogoUrl] = useState<string>(
+    () => resolveLoginLogoUrl() ?? DEFAULT_LOGIN_LOGO_PATH,
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -39,18 +60,11 @@ export default function LoginScreen() {
           return;
         }
 
-        setBrandLogoUrl(
-          getAppAssetUrl(
-            assets?.login_logo_path ??
-              assets?.login_logo_url ??
-              assets?.logo_path ??
-              assets?.logo_url,
-          ),
-        );
+        setBrandLogoUrl(resolveLoginLogoUrl(assets) ?? DEFAULT_LOGIN_LOGO_PATH);
       })
       .catch(() => {
         if (isMounted) {
-          setBrandLogoUrl(null);
+          setBrandLogoUrl(resolveLoginLogoUrl() ?? DEFAULT_LOGIN_LOGO_PATH);
         }
       });
 
@@ -77,6 +91,7 @@ export default function LoginScreen() {
       return;
     }
 
+    Keyboard.dismiss();
     setIsSubmitting(true);
 
     try {
@@ -87,7 +102,6 @@ export default function LoginScreen() {
         return;
       }
 
-      router.replace('/(tabs)');
     } catch (error) {
       setErrorMessage(
         error instanceof Error
@@ -101,6 +115,7 @@ export default function LoginScreen() {
 
   const handleSocialSignIn = async (provider: SocialAuthProvider) => {
     setErrorMessage(undefined);
+    Keyboard.dismiss();
     setSocialProvider(provider);
 
     try {
@@ -111,7 +126,6 @@ export default function LoginScreen() {
         return;
       }
 
-      router.replace('/(tabs)');
     } catch (error) {
       setErrorMessage(
         error instanceof Error
@@ -128,39 +142,20 @@ export default function LoginScreen() {
   };
 
   const isBusy = isSubmitting || socialProvider !== null;
-  const brandLogoSource = brandLogoUrl ? { uri: brandLogoUrl } : null;
+  const brandLogoSource = { uri: brandLogoUrl };
 
   return (
-    <AppScrollView contentContainerStyle={styles.container}>
-        <View style={styles.topBar}>
-          <View style={styles.brandMark}>
-            {brandLogoSource ? (
-              <Image
-                accessibilityIgnoresInvertColors
-                source={brandLogoSource}
-                style={styles.brandMarkImage}
-              />
-            ) : (
-              <Text style={styles.brandMarkFallback}>Y</Text>
-            )}
-          </View>
-          <View style={styles.brandCopy}>
-            <Text style={styles.locationText}>YellowBall</Text>
-            <Text style={styles.brandText}>Stringing & Court Shop</Text>
-          </View>
-        </View>
-
+    <View style={styles.screen}>
+      <AppScrollView contentContainerStyle={styles.container}>
         <View style={styles.hero}>
           <View style={styles.heroMarkShell}>
-            {brandLogoSource ? (
-              <Image
-                accessibilityIgnoresInvertColors
-                source={brandLogoSource}
-                style={styles.heroMarkImage}
-              />
-            ) : (
-              <Text style={styles.heroMarkFallback}>Y</Text>
-            )}
+            <Image
+              accessibilityIgnoresInvertColors
+              resizeMode="contain"
+              source={brandLogoSource}
+              style={styles.heroMarkImage}
+              testID="login-brand-logo-hero"
+            />
           </View>
           <Typography variant="caption" style={styles.eyebrow}>
             WELCOME BACK
@@ -284,7 +279,47 @@ export default function LoginScreen() {
             </Pressable>
           </View>
         </View>
-    </AppScrollView>
+      </AppScrollView>
+      {isBusy ? (
+        <View style={styles.authLoadingOverlay} testID="login-auth-loading">
+          <View style={styles.authLoadingPanel} testID="login-auth-loading-panel">
+            <View style={styles.loadingHeaderRow}>
+              <View style={styles.loadingLogoShell}>
+                <Image
+                  accessibilityIgnoresInvertColors
+                  resizeMode="contain"
+                  source={brandLogoSource}
+                  style={styles.loadingLogo}
+                />
+              </View>
+              <View style={styles.loadingStatusPill}>
+                <View style={styles.loadingStatusDot} />
+                <Text style={styles.loadingStatusText}>SECURE</Text>
+              </View>
+            </View>
+            <View style={styles.loadingContent}>
+              <View style={styles.loadingSpinnerShell}>
+                <View style={styles.loadingSpinnerHalo} />
+                <ActivityIndicator
+                  color={lightColors.primary.hex}
+                  size="large"
+                  testID="login-auth-spinner"
+                />
+              </View>
+              <Text style={styles.loadingTitle}>인증 상태 확인 중</Text>
+              <Text style={styles.loadingCaption}>
+                계정 정보를 안전하게 확인하고 있습니다.
+              </Text>
+            </View>
+            <View style={styles.loadingProgressTrack}>
+              <View style={[styles.loadingProgressSegment, styles.loadingProgressActive]} />
+              <View style={[styles.loadingProgressSegment, styles.loadingProgressActive]} />
+              <View style={styles.loadingProgressSegment} />
+            </View>
+          </View>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -364,6 +399,10 @@ function SocialLoginButton({
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    backgroundColor: lightColors.background.hex,
+    flex: 1,
+  },
   container: {
     backgroundColor: lightColors.background.hex,
     flexGrow: 1,
@@ -372,54 +411,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing[5],
     paddingTop: theme.spacing[6],
   },
-  topBar: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: theme.spacing[2],
-  },
-  brandMark: {
-    alignItems: 'center',
-    backgroundColor: lightColors.card.hex,
-    borderColor: lightColors.border.hex,
-    borderWidth: theme.borderWidth.hairline,
-    borderRadius: 999,
-    height: 36,
-    justifyContent: 'center',
-    overflow: 'hidden',
-    width: 36,
-  },
-  brandMarkImage: {
-    height: 32,
-    width: 32,
-  },
-  brandMarkFallback: {
-    color: lightColors.primary.hex,
-    fontFamily: theme.typography.fontFamily.display,
-    fontSize: 18,
-    fontWeight: theme.typography.fontWeight.bold,
-    lineHeight: 22,
-  },
-  brandCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  locationText: {
-    color: lightColors.foreground.hex,
-    fontFamily: theme.typography.fontFamily.display,
-    fontSize: 14,
-    fontWeight: theme.typography.fontWeight.semibold,
-    lineHeight: 18,
-  },
-  brandText: {
-    color: lightColors.mutedForeground.hex,
-    fontFamily: theme.typography.fontFamily.body,
-    fontSize: 11,
-    lineHeight: 15,
-  },
   hero: {
     alignItems: 'center',
     gap: theme.spacing[2],
-    paddingTop: theme.spacing[6],
+    paddingTop: theme.spacing[12],
   },
   heroMarkShell: {
     alignItems: 'center',
@@ -434,15 +429,8 @@ const styles = StyleSheet.create({
     width: 116,
   },
   heroMarkImage: {
-    height: 108,
-    width: 108,
-  },
-  heroMarkFallback: {
-    color: lightColors.primary.hex,
-    fontFamily: theme.typography.fontFamily.display,
-    fontSize: 58,
-    fontWeight: theme.typography.fontWeight.bold,
-    lineHeight: 66,
+    height: 92,
+    width: 92,
   },
   title: {
     fontSize: 26,
@@ -470,6 +458,113 @@ const styles = StyleSheet.create({
   },
   authButton: {
     width: '100%',
+  },
+  authLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    backgroundColor: 'rgba(10, 20, 15, 0.24)',
+    justifyContent: 'center',
+    padding: theme.spacing[6],
+  },
+  authLoadingPanel: {
+    backgroundColor: lightColors.card.hex,
+    borderColor: lightColors.border.hex,
+    borderRadius: theme.borderRadius.xl,
+    borderWidth: theme.borderWidth.hairline,
+    gap: theme.spacing[5],
+    maxWidth: 320,
+    overflow: 'hidden',
+    padding: theme.spacing[5],
+    width: '100%',
+  },
+  loadingHeaderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  loadingLogoShell: {
+    alignItems: 'center',
+    backgroundColor: lightColors.secondary.hex,
+    borderColor: lightColors.border.hex,
+    borderRadius: 999,
+    borderWidth: theme.borderWidth.hairline,
+    height: 40,
+    justifyContent: 'center',
+    overflow: 'hidden',
+    width: 40,
+  },
+  loadingLogo: {
+    height: 31,
+    width: 31,
+  },
+  loadingStatusPill: {
+    alignItems: 'center',
+    backgroundColor: lightColors.secondary.hex,
+    borderRadius: 999,
+    flexDirection: 'row',
+    gap: theme.spacing[1],
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[1],
+  },
+  loadingStatusDot: {
+    backgroundColor: lightColors.accent.hex,
+    borderRadius: 999,
+    height: 7,
+    width: 7,
+  },
+  loadingStatusText: {
+    color: lightColors.primary.hex,
+    fontFamily: theme.typography.fontFamily.body,
+    fontSize: 10,
+    fontWeight: theme.typography.fontWeight.bold,
+    letterSpacing: 0,
+  },
+  loadingContent: {
+    alignItems: 'center',
+    gap: theme.spacing[2],
+  },
+  loadingSpinnerShell: {
+    alignItems: 'center',
+    height: 64,
+    justifyContent: 'center',
+    marginBottom: theme.spacing[1],
+    width: 64,
+  },
+  loadingSpinnerHalo: {
+    backgroundColor: lightColors.accent.hex,
+    borderRadius: 999,
+    height: 64,
+    opacity: 0.18,
+    position: 'absolute',
+    width: 64,
+  },
+  loadingTitle: {
+    color: lightColors.foreground.hex,
+    fontFamily: theme.typography.fontFamily.display,
+    fontSize: 18,
+    fontWeight: theme.typography.fontWeight.bold,
+    lineHeight: 24,
+    textAlign: 'center',
+  },
+  loadingCaption: {
+    color: lightColors.mutedForeground.hex,
+    fontFamily: theme.typography.fontFamily.body,
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  loadingProgressTrack: {
+    flexDirection: 'row',
+    gap: theme.spacing[1],
+  },
+  loadingProgressSegment: {
+    backgroundColor: lightColors.border.hex,
+    borderRadius: 999,
+    flex: 1,
+    height: 4,
+  },
+  loadingProgressActive: {
+    backgroundColor: lightColors.primary.hex,
   },
   nativeAuthButton: {
     alignItems: 'center',

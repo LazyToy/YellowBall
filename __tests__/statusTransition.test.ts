@@ -38,6 +38,11 @@ describe('booking status utilities', () => {
     }
   });
 
+  test('서비스 예약 관리자 취소와 노쇼는 접수로 표시하지 않는다', () => {
+    expect(serviceBookingStatusLabels.cancelled_admin).toBe('관리자 취소');
+    expect(serviceBookingStatusLabels.no_show).toBe('노쇼');
+  });
+
   test('서비스 예약 상태 전환은 유효한 경로만 허용한다', () => {
     expect(isValidServiceBookingTransition('requested', 'approved')).toBe(true);
     expect(isValidServiceBookingTransition('requested', 'completed')).toBe(true);

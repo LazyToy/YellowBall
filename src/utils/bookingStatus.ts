@@ -67,10 +67,10 @@ export const serviceBookingStatusLabels: Record<ServiceBookingStatus, string> = 
   delivered: '완료',
   done: '완료',
   cancelled_user: '접수',
-  cancelled_admin: '접수',
+  cancelled_admin: '관리자 취소',
   rejected: '접수',
   reschedule_requested: '접수',
-  no_show: '접수',
+  no_show: '노쇼',
   refund_pending: '완료',
   refund_done: '완료',
 };

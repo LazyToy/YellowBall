@@ -1,5 +1,6 @@
 import React from 'react';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
+import { Alert } from 'react-native';
 
 const mockCreateBooking = jest.fn();
 const mockGetMyBookings = jest.fn();
@@ -395,14 +396,20 @@ describe('NewBookingScreen', () => {
     expect(screen.queryByLabelText('메인 텐션')).toBeNull();
     expect(screen.queryByLabelText('크로스 텐션')).toBeNull();
 
-    fireEvent.press(screen.getByLabelText('반납 예정 시간'));
-
-    expect(screen.getByLabelText('반납 예정 시간 18:00')).toBeTruthy();
-    expect(screen.queryByLabelText('반납 예정 시간 08:30')).toBeNull();
-    expect(screen.queryByLabelText('반납 예정 시간 18:30')).toBeNull();
+    expect(screen.getByTestId('demo-rental-time-picker')).toBeTruthy();
+    expect(screen.queryByTestId('demo-return-time-picker')).toBeNull();
+    fireEvent.press(screen.getByTestId('demo-rental-time-complete-button'));
+    expect(screen.getByTestId('demo-return-time-picker')).toBeTruthy();
+    expect(screen.getByTestId('demo-selected-rental-time-value').props.children).toBe('2099-05-04 10:00');
+    expect(screen.getByTestId('demo-return-time-option-18:00')).toBeTruthy();
+    expect(screen.queryByTestId('demo-return-time-option-08:30')).toBeNull();
+    expect(screen.queryByTestId('demo-return-time-option-18:30')).toBeNull();
+    fireEvent.press(screen.getByTestId('demo-return-time-complete-button'));
+    expect(screen.getByTestId('demo-rental-time-back-button')).toBeTruthy();
+    expect(screen.getByTestId('demo-return-time-back-button')).toBeTruthy();
 
     await act(async () => {
-      fireEvent.press(screen.getByText('예약 접수'));
+      fireEvent.press(screen.getByTestId('new-booking-submit-button'));
     });
 
     await waitFor(() =>
@@ -447,5 +454,112 @@ describe('NewBookingScreen', () => {
     expect(screen.getByText('매장 픽업')).toBeTruthy();
     expect(screen.queryByText('퀵')).toBeNull();
     expect(screen.queryByText('택배')).toBeNull();
+  });
+  test('demo return time is selected from inline time chips', async () => {
+    const NewBookingScreen = require('../app/(tabs)/new-booking').default;
+    const screen = render(<NewBookingScreen />);
+
+    await waitFor(() => expect(screen.getByText('Wilson Blade')).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('시타'));
+    });
+
+    await waitFor(() => expect(screen.getByText('Head Speed Demo')).toBeTruthy());
+
+    expect(screen.getByTestId('demo-rental-time-picker')).toBeTruthy();
+    expect(screen.queryByTestId('demo-return-time-picker')).toBeNull();
+    fireEvent.press(screen.getByTestId('demo-rental-time-complete-button'));
+    expect(screen.getByTestId('demo-return-time-picker')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('demo-return-time-option-13:00'));
+    fireEvent.press(screen.getByTestId('demo-return-time-complete-button'));
+    expect(screen.getByTestId('demo-selected-rental-time-value').props.children).toBe('2099-05-04 10:00');
+    expect(screen.getByTestId('demo-selected-return-time-value').props.children).toBe('2099-05-04 13:00');
+    expect(screen.getByTestId('demo-rental-time-back-button')).toBeTruthy();
+    expect(screen.getByTestId('demo-return-time-back-button')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('new-booking-submit-button'));
+
+    await waitFor(() =>
+      expect(mockCreateDemoBooking).toHaveBeenCalledWith(
+        expect.objectContaining({
+          expectedReturnTime: '2099-05-04T04:00:00.000Z',
+        }),
+      ),
+    );
+  });
+
+  test('demo return date can be later than the rental date without resetting rental selection', async () => {
+    const NewBookingScreen = require('../app/(tabs)/new-booking').default;
+    const screen = render(<NewBookingScreen />);
+
+    await waitFor(() => expect(screen.getByText('Wilson Blade')).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('시타'));
+    });
+
+    await waitFor(() => expect(screen.getByText('Head Speed Demo')).toBeTruthy());
+
+    fireEvent.press(screen.getByTestId('demo-rental-time-complete-button'));
+    expect(screen.getByTestId('demo-selected-rental-time-value').props.children).toBe('2099-05-04 10:00');
+    expect(screen.getByLabelText('Select 2099-05-03').props.accessibilityState.disabled).toBe(true);
+
+    fireEvent.press(screen.getByLabelText('Select 2099-05-05'));
+    expect(screen.queryByTestId('demo-rental-time-picker')).toBeNull();
+    expect(screen.getByTestId('demo-selected-rental-time-value').props.children).toBe('2099-05-04 10:00');
+
+    fireEvent.press(screen.getByTestId('demo-return-time-option-10:00'));
+    fireEvent.press(screen.getByTestId('demo-return-time-complete-button'));
+    fireEvent.press(screen.getByTestId('new-booking-submit-button'));
+
+    await waitFor(() =>
+      expect(mockCreateDemoBooking).toHaveBeenCalledWith(
+        expect.objectContaining({
+          slotId: 'slot-demo',
+          expectedReturnTime: '2099-05-05T01:00:00.000Z',
+        }),
+      ),
+    );
+  });
+
+  test('demo return time cannot exceed one week from the rental time', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    const NewBookingScreen = require('../app/(tabs)/new-booking').default;
+    const screen = render(<NewBookingScreen />);
+
+    await waitFor(() => expect(screen.getByText('Wilson Blade')).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('시타'));
+    });
+
+    await waitFor(() => expect(screen.getByText('Head Speed Demo')).toBeTruthy());
+
+    fireEvent.press(screen.getByTestId('demo-rental-time-complete-button'));
+    fireEvent.press(screen.getByLabelText('Select 2099-05-11'));
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('demo-return-time-option-09:30').props
+          .accessibilityState.selected,
+      ).toBe(true),
+    );
+
+    fireEvent.press(screen.getByTestId('demo-return-time-option-10:30'));
+
+    expect(alertSpy).toHaveBeenCalledWith(
+      '선택 불가',
+      expect.stringContaining('일주일'),
+    );
+    expect(
+      screen.getByTestId('demo-return-time-option-10:30').props
+        .accessibilityState.selected,
+    ).toBe(false);
+    expect(
+      screen.getByTestId('demo-return-time-option-09:30').props
+        .accessibilityState.selected,
+    ).toBe(true);
+
+    alertSpy.mockRestore();
   });
 });

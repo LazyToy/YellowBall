@@ -5,6 +5,7 @@ export type AdminKpi = {
   value: string;
   sub: string;
   delta: string;
+  href?: string;
   tone: DashboardTone;
   up: boolean;
 };

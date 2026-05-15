@@ -1,0 +1,523 @@
+{
+  "suffix": 1778810658474,
+  "users": {
+    "plain_user": {
+      "id": "6e23f188-96f1-48e3-a4c9-6e04805a4a70",
+      "email": "llm.plain_user.1778810658474@yellowball.test",
+      "password": "YB-plain_user-1778810658474!A9",
+      "role": "user"
+    },
+    "user_reject": {
+      "id": "2c950900-5dda-4239-9262-88edbe738117",
+      "email": "llm.user_reject.1778810658474@yellowball.test",
+      "password": "YB-user_reject-1778810658474!A9",
+      "role": "user"
+    },
+    "user_cancelreq": {
+      "id": "b4be4154-409f-4e16-8f3f-f54c8f91afd2",
+      "email": "llm.user_cancelreq.1778810658474@yellowball.test",
+      "password": "YB-user_cancelreq-1778810658474!A9",
+      "role": "user"
+    },
+    "user_completed": {
+      "id": "64d37bff-7595-4f8d-84b7-8bc09bbc76e5",
+      "email": "llm.user_completed.1778810658474@yellowball.test",
+      "password": "YB-user_completed-1778810658474!A9",
+      "role": "user"
+    },
+    "user_noshow": {
+      "id": "819f9839-dc1f-44bb-9540-20270a81f123",
+      "email": "llm.user_noshow.1778810658474@yellowball.test",
+      "password": "YB-user_noshow-1778810658474!A9",
+      "role": "user"
+    },
+    "user_rlsa": {
+      "id": "da42fc8f-5abf-40cf-891c-b27efd01a3dd",
+      "email": "llm.user_rlsa.1778810658474@yellowball.test",
+      "password": "YB-user_rlsa-1778810658474!A9",
+      "role": "user"
+    },
+    "user_rlsb": {
+      "id": "c568275f-d2b3-4cd1-a9f1-f21be5ab462c",
+      "email": "llm.user_rlsb.1778810658474@yellowball.test",
+      "password": "YB-user_rlsb-1778810658474!A9",
+      "role": "user"
+    },
+    "user_negative": {
+      "id": "290235fa-1020-4218-9407-764084ba5c9d",
+      "email": "llm.user_negative.1778810658474@yellowball.test",
+      "password": "YB-user_negative-1778810658474!A9",
+      "role": "user"
+    },
+    "user_restricted": {
+      "id": "f95f1f88-2c2c-4424-9540-d4c30f75e308",
+      "email": "llm.user_restricted.1778810658474@yellowball.test",
+      "password": "YB-user_restricted-1778810658474!A9",
+      "role": "user"
+    }
+  },
+  "admins": {
+    "admin_bookings": {
+      "id": "7b1cc16b-2b4b-4c00-81e8-c455f4cccace",
+      "email": "llm.admin_bookings.1778810658474@yellowball.test",
+      "password": "YB-admin_bookings-1778810658474!A9",
+      "role": "admin",
+      "perms": {
+        "can_manage_bookings": true
+      }
+    },
+    "admin_noperm": {
+      "id": "e1235d89-deab-4d86-83cc-a591c821273e",
+      "email": "llm.admin_noperm.1778810658474@yellowball.test",
+      "password": "YB-admin_noperm-1778810658474!A9",
+      "role": "admin",
+      "perms": {
+        "can_manage_bookings": false
+      }
+    }
+  },
+  "slots": {
+    "reject_web": {
+      "id": "fb813ba9-cec2-4ca8-8732-1ffe09fc6348",
+      "service_type": "stringing",
+      "start_time": "2026-05-16T08:04:27.151+00:00",
+      "end_time": "2026-05-16T09:04:27.151+00:00",
+      "capacity": 1,
+      "reserved_count": 0,
+      "is_blocked": false,
+      "block_reason": null,
+      "created_at": "2026-05-15T02:04:26.446919+00:00",
+      "updated_at": "2026-05-15T02:04:26.446919+00:00"
+    },
+    "cancel_request": {
+      "id": "351af339-43ee-42de-aa68-cd8e246e55df",
+      "service_type": "stringing",
+      "start_time": "2026-05-15T05:04:27.324+00:00",
+      "end_time": "2026-05-15T06:04:27.324+00:00",
+      "capacity": 1,
+      "reserved_count": 0,
+      "is_blocked": false,
+      "block_reason": null,
+      "created_at": "2026-05-15T02:04:26.617422+00:00",
+      "updated_at": "2026-05-15T02:04:26.617422+00:00"
+    },
+    "completed_lock": {
+      "id": "f1837394-4eb8-4b61-83dc-cbc73d7c904a",
+      "service_type": "stringing",
+      "start_time": "2026-05-16T09:04:27.488+00:00",
+      "end_time": "2026-05-16T10:04:27.488+00:00",
+      "capacity": 1,
+      "reserved_count": 0,
+      "is_blocked": false,
+      "block_reason": null,
+      "created_at": "2026-05-15T02:04:26.782066+00:00",
+      "updated_at": "2026-05-15T02:04:26.782066+00:00"
+    },
+    "noshow_lock": {
+      "id": "87ce95da-2975-4fb6-b765-5c1fc0653f91",
+      "service_type": "stringing",
+      "start_time": "2026-05-16T10:04:27.65+00:00",
+      "end_time": "2026-05-16T11:04:27.65+00:00",
+      "capacity": 1,
+      "reserved_count": 0,
+      "is_blocked": false,
+      "block_reason": null,
+      "created_at": "2026-05-15T02:04:26.943909+00:00",
+      "updated_at": "2026-05-15T02:04:26.943909+00:00"
+    },
+    "rls_booking": {
+      "id": "405cb9c1-fdc5-4293-8a53-070610a37429",
+      "service_type": "stringing",
+      "start_time": "2026-05-16T11:04:27.814+00:00",
+      "end_time": "2026-05-16T12:04:27.814+00:00",
+      "capacity": 1,
+      "reserved_count": 0,
+      "is_blocked": false,
+      "block_reason": null,
+      "created_at": "2026-05-15T02:04:27.119289+00:00",
+      "updated_at": "2026-05-15T02:04:27.119289+00:00"
+    },
+    "negative_valid": {
+      "id": "59310d88-3aab-47ef-b81b-1090f2d3b907",
+      "service_type": "stringing",
+      "start_time": "2026-05-16T12:04:27.99+00:00",
+      "end_time": "2026-05-16T13:04:27.99+00:00",
+      "capacity": 1,
+      "reserved_count": 0,
+      "is_blocked": false,
+      "block_reason": null,
+      "created_at": "2026-05-15T02:04:27.282316+00:00",
+      "updated_at": "2026-05-15T02:04:27.282316+00:00"
+    },
+    "blocked_negative": {
+      "id": "4734f4f4-2f0a-45cc-86fc-d01dc1d96dad",
+      "service_type": "stringing",
+      "start_time": "2026-05-16T13:04:28.154+00:00",
+      "end_time": "2026-05-16T14:04:28.154+00:00",
+      "capacity": 1,
+      "reserved_count": 0,
+      "is_blocked": true,
+      "block_reason": "LLM blocked negative",
+      "created_at": "2026-05-15T02:04:27.448525+00:00",
+      "updated_at": "2026-05-15T02:04:27.448525+00:00"
+    },
+    "full_negative": {
+      "id": "477c706e-39aa-44a9-91af-49f1aca16a37",
+      "service_type": "stringing",
+      "start_time": "2026-05-16T14:04:28.319+00:00",
+      "end_time": "2026-05-16T15:04:28.319+00:00",
+      "capacity": 1,
+      "reserved_count": 1,
+      "is_blocked": false,
+      "block_reason": null,
+      "created_at": "2026-05-15T02:04:27.612361+00:00",
+      "updated_at": "2026-05-15T02:04:27.612361+00:00"
+    },
+    "restricted_new": {
+      "id": "8b3e4c56-b653-495d-8cca-74eb5db0f80c",
+      "service_type": "stringing",
+      "start_time": "2026-05-16T15:04:28.483+00:00",
+      "end_time": "2026-05-16T16:04:28.483+00:00",
+      "capacity": 1,
+      "reserved_count": 0,
+      "is_blocked": false,
+      "block_reason": null,
+      "created_at": "2026-05-15T02:04:27.775182+00:00",
+      "updated_at": "2026-05-15T02:04:27.775182+00:00"
+    },
+    "restricted_history_0": {
+      "id": "50aabb73-f94d-46bb-864f-40b18bfcedce",
+      "service_type": "stringing",
+      "start_time": "2026-05-16T16:04:34.192+00:00",
+      "end_time": "2026-05-16T17:04:34.192+00:00",
+      "capacity": 1,
+      "reserved_count": 0,
+      "is_blocked": false,
+      "block_reason": null,
+      "created_at": "2026-05-15T02:04:33.484634+00:00",
+      "updated_at": "2026-05-15T02:04:33.484634+00:00"
+    },
+    "restricted_history_1": {
+      "id": "12b8db4a-3968-45a0-99b5-43b0af6591db",
+      "service_type": "stringing",
+      "start_time": "2026-05-16T17:04:34.515+00:00",
+      "end_time": "2026-05-16T18:04:34.515+00:00",
+      "capacity": 1,
+      "reserved_count": 0,
+      "is_blocked": false,
+      "block_reason": null,
+      "created_at": "2026-05-15T02:04:33.80973+00:00",
+      "updated_at": "2026-05-15T02:04:33.80973+00:00"
+    },
+    "restricted_history_2": {
+      "id": "97a8e5e1-49c6-4a12-b97f-e8be982432d5",
+      "service_type": "stringing",
+      "start_time": "2026-05-16T18:04:34.84+00:00",
+      "end_time": "2026-05-16T19:04:34.84+00:00",
+      "capacity": 1,
+      "reserved_count": 0,
+      "is_blocked": false,
+      "block_reason": null,
+      "created_at": "2026-05-15T02:04:34.138593+00:00",
+      "updated_at": "2026-05-15T02:04:34.138593+00:00"
+    }
+  },
+  "bookings": {
+    "reject_web": {
+      "id": "1936fa39-43f6-4094-9ef7-29fd6e20dbe9",
+      "user_id": "2c950900-5dda-4239-9262-88edbe738117",
+      "racket_id": "b195cfbd-90d0-48c2-bd92-c7a768be1f95",
+      "main_string_id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+      "cross_string_id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+      "tension_main": 48,
+      "tension_cross": 48,
+      "slot_id": "fb813ba9-cec2-4ca8-8732-1ffe09fc6348",
+      "delivery_method": "store_pickup",
+      "address_id": null,
+      "status": "requested",
+      "user_notes": "LLM-REJECT-1778810658474",
+      "admin_notes": null,
+      "no_show_counted": false,
+      "created_at": "2026-05-15T02:04:28.465839+00:00",
+      "updated_at": "2026-05-15T02:04:28.465839+00:00"
+    },
+    "cancel_request": {
+      "id": "b6ff9eb0-ff8c-49b6-80f1-f8f70c70285a",
+      "user_id": "b4be4154-409f-4e16-8f3f-f54c8f91afd2",
+      "racket_id": "aa04cb7a-e5fa-491d-962c-f632854ad2a1",
+      "main_string_id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+      "cross_string_id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+      "tension_main": 48,
+      "tension_cross": 48,
+      "slot_id": "351af339-43ee-42de-aa68-cd8e246e55df",
+      "delivery_method": "store_pickup",
+      "address_id": null,
+      "status": "requested",
+      "user_notes": "LLM-CANCEL-REQUEST-1778810658474",
+      "admin_notes": null,
+      "no_show_counted": false,
+      "created_at": "2026-05-15T02:04:28.916595+00:00",
+      "updated_at": "2026-05-15T02:04:28.916595+00:00"
+    },
+    "completed_lock": {
+      "id": "1b656049-f7b4-45ff-ae79-e8fcfafce3f2",
+      "user_id": "64d37bff-7595-4f8d-84b7-8bc09bbc76e5",
+      "racket_id": "2fe9b6e3-7d53-4543-afc2-835eda7e5a8a",
+      "main_string_id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+      "cross_string_id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+      "tension_main": 48,
+      "tension_cross": 48,
+      "slot_id": "f1837394-4eb8-4b61-83dc-cbc73d7c904a",
+      "delivery_method": "store_pickup",
+      "address_id": null,
+      "status": "requested",
+      "user_notes": "LLM-COMPLETED-LOCK-1778810658474",
+      "admin_notes": null,
+      "no_show_counted": false,
+      "created_at": "2026-05-15T02:04:29.350082+00:00",
+      "updated_at": "2026-05-15T02:04:29.350082+00:00"
+    },
+    "noshow_lock": {
+      "id": "b9491320-f0e0-426b-8bf7-8b76bfd68954",
+      "user_id": "819f9839-dc1f-44bb-9540-20270a81f123",
+      "racket_id": "25ee439f-b4e8-4e53-abce-c7f13a0392a4",
+      "main_string_id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+      "cross_string_id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+      "tension_main": 48,
+      "tension_cross": 48,
+      "slot_id": "87ce95da-2975-4fb6-b765-5c1fc0653f91",
+      "delivery_method": "store_pickup",
+      "address_id": null,
+      "status": "requested",
+      "user_notes": "LLM-NOSHOW-LOCK-1778810658474",
+      "admin_notes": null,
+      "no_show_counted": false,
+      "created_at": "2026-05-15T02:04:29.759168+00:00",
+      "updated_at": "2026-05-15T02:04:29.759168+00:00"
+    },
+    "rls_booking": {
+      "id": "46801486-90f8-4b5f-8b30-0b0a323f06a1",
+      "user_id": "da42fc8f-5abf-40cf-891c-b27efd01a3dd",
+      "racket_id": "eacd24cf-957a-4b67-b4c2-4889cf768c8a",
+      "main_string_id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+      "cross_string_id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+      "tension_main": 48,
+      "tension_cross": 48,
+      "slot_id": "405cb9c1-fdc5-4293-8a53-070610a37429",
+      "delivery_method": "store_pickup",
+      "address_id": null,
+      "status": "requested",
+      "user_notes": "LLM-RLS-1778810658474",
+      "admin_notes": null,
+      "no_show_counted": false,
+      "created_at": "2026-05-15T02:04:30.173184+00:00",
+      "updated_at": "2026-05-15T02:04:30.173184+00:00"
+    }
+  },
+  "results": {
+    "userCancelRequestInsert": {
+      "error": {
+        "code": "42501",
+        "message": "new row violates row-level security policy for table \"booking_status_logs\""
+      },
+      "data": null
+    },
+    "seededCancelRequest": {
+      "id": "ef3fc5f8-ebfc-4071-b78b-47edebd8dd74",
+      "booking_type": "service",
+      "booking_id": "b6ff9eb0-ff8c-49b6-80f1-f8f70c70285a",
+      "previous_status": "requested",
+      "new_status": "cancel_requested",
+      "changed_by": "b4be4154-409f-4e16-8f3f-f54c8f91afd2",
+      "reason": "LLM seeded cancel request for admin UI",
+      "changed_at": "2026-05-15T02:04:30.534057+00:00"
+    },
+    "adminRpc_completed_completed": {
+      "error": null,
+      "data": {
+        "id": "1b656049-f7b4-45ff-ae79-e8fcfafce3f2",
+        "user_id": "64d37bff-7595-4f8d-84b7-8bc09bbc76e5",
+        "racket_id": "2fe9b6e3-7d53-4543-afc2-835eda7e5a8a",
+        "main_string_id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+        "cross_string_id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+        "tension_main": 48,
+        "tension_cross": 48,
+        "slot_id": "f1837394-4eb8-4b61-83dc-cbc73d7c904a",
+        "delivery_method": "store_pickup",
+        "address_id": null,
+        "status": "completed",
+        "user_notes": "LLM-COMPLETED-LOCK-1778810658474",
+        "admin_notes": null,
+        "no_show_counted": false,
+        "created_at": "2026-05-15T02:04:29.350082+00:00",
+        "updated_at": "2026-05-15T02:04:30.961777+00:00"
+      }
+    },
+    "adminRpc_noshow1_approved": {
+      "error": null,
+      "data": {
+        "id": "b9491320-f0e0-426b-8bf7-8b76bfd68954",
+        "user_id": "819f9839-dc1f-44bb-9540-20270a81f123",
+        "racket_id": "25ee439f-b4e8-4e53-abce-c7f13a0392a4",
+        "main_string_id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+        "cross_string_id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+        "tension_main": 48,
+        "tension_cross": 48,
+        "slot_id": "87ce95da-2975-4fb6-b765-5c1fc0653f91",
+        "delivery_method": "store_pickup",
+        "address_id": null,
+        "status": "approved",
+        "user_notes": "LLM-NOSHOW-LOCK-1778810658474",
+        "admin_notes": null,
+        "no_show_counted": false,
+        "created_at": "2026-05-15T02:04:29.759168+00:00",
+        "updated_at": "2026-05-15T02:04:31.130801+00:00"
+      }
+    },
+    "adminRpc_noshow2_visit_pending": {
+      "error": null,
+      "data": {
+        "id": "b9491320-f0e0-426b-8bf7-8b76bfd68954",
+        "user_id": "819f9839-dc1f-44bb-9540-20270a81f123",
+        "racket_id": "25ee439f-b4e8-4e53-abce-c7f13a0392a4",
+        "main_string_id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+        "cross_string_id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+        "tension_main": 48,
+        "tension_cross": 48,
+        "slot_id": "87ce95da-2975-4fb6-b765-5c1fc0653f91",
+        "delivery_method": "store_pickup",
+        "address_id": null,
+        "status": "visit_pending",
+        "user_notes": "LLM-NOSHOW-LOCK-1778810658474",
+        "admin_notes": null,
+        "no_show_counted": false,
+        "created_at": "2026-05-15T02:04:29.759168+00:00",
+        "updated_at": "2026-05-15T02:04:31.295692+00:00"
+      }
+    },
+    "adminRpc_noshow3_no_show": {
+      "error": null,
+      "data": {
+        "id": "b9491320-f0e0-426b-8bf7-8b76bfd68954",
+        "user_id": "819f9839-dc1f-44bb-9540-20270a81f123",
+        "racket_id": "25ee439f-b4e8-4e53-abce-c7f13a0392a4",
+        "main_string_id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+        "cross_string_id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+        "tension_main": 48,
+        "tension_cross": 48,
+        "slot_id": "87ce95da-2975-4fb6-b765-5c1fc0653f91",
+        "delivery_method": "store_pickup",
+        "address_id": null,
+        "status": "no_show",
+        "user_notes": "LLM-NOSHOW-LOCK-1778810658474",
+        "admin_notes": null,
+        "no_show_counted": false,
+        "created_at": "2026-05-15T02:04:29.759168+00:00",
+        "updated_at": "2026-05-15T02:04:31.461065+00:00"
+      }
+    },
+    "rls": {
+      "otherUserSelect": {
+        "error": null,
+        "count": 0,
+        "data": []
+      },
+      "otherUserUpdate": {
+        "error": null,
+        "count": 0,
+        "data": []
+      },
+      "otherUserCancelRpc": {
+        "error": {
+          "code": "P0001",
+          "message": "본인 예약만 취소할 수 있습니다."
+        },
+        "data": null
+      },
+      "anonSelect": {
+        "error": null,
+        "count": 0,
+        "data": []
+      },
+      "anonCreateRpc": {
+        "error": {
+          "code": "42501",
+          "message": "permission denied for function create_service_booking_transaction"
+        },
+        "data": null
+      }
+    },
+    "negative_parcel_no_address": {
+      "error": {
+        "code": "P0001",
+        "message": "Delivery bookings require an address."
+      },
+      "data": null
+    },
+    "negative_blocked_slot": {
+      "error": {
+        "code": "P0001",
+        "message": "Stringing slot is not available."
+      },
+      "data": null
+    },
+    "negative_full_slot": {
+      "error": {
+        "code": "P0001",
+        "message": "Stringing slot is not available."
+      },
+      "data": null
+    },
+    "negative_no_show_restricted": {
+      "error": {
+        "code": "P0001",
+        "message": "Users with unresolved repeated no-shows cannot create bookings."
+      },
+      "data": null
+    }
+  },
+  "cleanup": {
+    "userIds": [
+      "7b1cc16b-2b4b-4c00-81e8-c455f4cccace",
+      "e1235d89-deab-4d86-83cc-a591c821273e",
+      "6e23f188-96f1-48e3-a4c9-6e04805a4a70",
+      "2c950900-5dda-4239-9262-88edbe738117",
+      "b4be4154-409f-4e16-8f3f-f54c8f91afd2",
+      "64d37bff-7595-4f8d-84b7-8bc09bbc76e5",
+      "819f9839-dc1f-44bb-9540-20270a81f123",
+      "da42fc8f-5abf-40cf-891c-b27efd01a3dd",
+      "c568275f-d2b3-4cd1-a9f1-f21be5ab462c",
+      "290235fa-1020-4218-9407-764084ba5c9d",
+      "f95f1f88-2c2c-4424-9540-d4c30f75e308"
+    ],
+    "slotIds": [
+      "fb813ba9-cec2-4ca8-8732-1ffe09fc6348",
+      "351af339-43ee-42de-aa68-cd8e246e55df",
+      "f1837394-4eb8-4b61-83dc-cbc73d7c904a",
+      "87ce95da-2975-4fb6-b765-5c1fc0653f91",
+      "405cb9c1-fdc5-4293-8a53-070610a37429",
+      "59310d88-3aab-47ef-b81b-1090f2d3b907",
+      "4734f4f4-2f0a-45cc-86fc-d01dc1d96dad",
+      "477c706e-39aa-44a9-91af-49f1aca16a37",
+      "8b3e4c56-b653-495d-8cca-74eb5db0f80c",
+      "50aabb73-f94d-46bb-864f-40b18bfcedce",
+      "12b8db4a-3968-45a0-99b5-43b0af6591db",
+      "97a8e5e1-49c6-4a12-b97f-e8be982432d5"
+    ],
+    "bookingIds": [
+      "1936fa39-43f6-4094-9ef7-29fd6e20dbe9",
+      "b6ff9eb0-ff8c-49b6-80f1-f8f70c70285a",
+      "1b656049-f7b4-45ff-ae79-e8fcfafce3f2",
+      "b9491320-f0e0-426b-8bf7-8b76bfd68954",
+      "46801486-90f8-4b5f-8b30-0b0a323f06a1",
+      "be60f6f7-2057-42ae-a23a-50ea74a59e31",
+      "e48a18a9-4961-4fcf-ade8-34fbcc4a1402",
+      "a387d6c5-791e-4a96-85f8-54a8442e343d"
+    ]
+  },
+  "string": {
+    "id": "07ad5b78-5c76-4528-95dd-2dcde3fc00d8",
+    "brand": "Luxilon",
+    "name": "ALU Power"
+  }
+}
